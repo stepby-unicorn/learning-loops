@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>학습 피드백 루프</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="site"><nav><a href="./">학습 피드백 루프</a><a href="process.html">프로세스</a></nav></header>
+<main>
+<h1>학습 주제</h1>
+<p class="muted">주제마다 회차 테스트로 처음 익히고, 통과한 카드는 정해진 날짜에 다시 점검합니다. 진행 방식은 <a href="process.html">프로세스</a>에 있습니다.</p>
+<div id="topics">불러오는 중…</div>
+<footer>진행 상태는 이 기기 브라우저에만 저장됩니다.</footer>
+</main>
+<script src="assets/app.js"></script>
+<script>renderIndex(document.getElementById("topics")).catch((e) => { document.getElementById("topics").textContent = e.message; });</script>
+</body>
+</html>
