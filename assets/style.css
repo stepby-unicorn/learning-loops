@@ -6,7 +6,7 @@
 /* 테마 색 — Framework7 은 이 값들을 JS(앱 초기화)로 만든다. 이 사이트는 CSS 만 쓰므로 고정 값으로 둔다.
    값이 없으면 채움 버튼·확신 선택·라디오 표시가 투명하게 그려진다. md 토큰은 Material 3 기본 파랑 팔레트. */
 :root {
-  --f7-theme-color: #007aff; --f7-theme-color-rgb: 0, 122, 255; --f7-theme-color-shade: #0066d6; --f7-theme-color-tint: #2990ff;
+  --f7-theme-color: #0066d6; --f7-theme-color-rgb: 0, 102, 214; --f7-theme-color-shade: #0055b3; --f7-theme-color-tint: #1a7ae0;
   --f7-md-primary: #0061a4; --f7-md-on-primary: #ffffff; --f7-md-primary-container: #d1e4ff; --f7-md-on-primary-container: #001d36;
   --f7-md-secondary: #535f70; --f7-md-on-secondary: #ffffff; --f7-md-secondary-container: #d7e3f7; --f7-md-on-secondary-container: #101c2b;
   --f7-md-surface: #fdfcff; --f7-md-on-surface: #1a1c1e; --f7-md-surface-variant: #dfe2eb; --f7-md-on-surface-variant: #43474e; --f7-md-on-surface-variant-rgb: 67, 71, 78;
@@ -14,7 +14,7 @@
   --f7-md-surface-1: #f0f4fa; --f7-md-surface-2: #e8f0f9; --f7-md-surface-2-rgb: 232, 240, 249; --f7-md-surface-3: #e1ebf7; --f7-md-surface-5: #d8e6f5;
 }
 .dark {
-  --f7-theme-color: #0a84ff; --f7-theme-color-rgb: 10, 132, 255; --f7-theme-color-shade: #0070d9; --f7-theme-color-tint: #3399ff;
+  --f7-theme-color: #1a73e8; --f7-theme-color-rgb: 26, 115, 232; --f7-theme-color-shade: #155fc0; --f7-theme-color-tint: #4089ec;
   --f7-md-primary: #9ecaff; --f7-md-on-primary: #003258; --f7-md-primary-container: #00497d; --f7-md-on-primary-container: #d1e4ff;
   --f7-md-secondary: #bbc7db; --f7-md-on-secondary: #253140; --f7-md-secondary-container: #3b4858; --f7-md-on-secondary-container: #d7e3f7;
   --f7-md-surface: #1a1c1e; --f7-md-on-surface: #e2e2e6; --f7-md-surface-variant: #43474e; --f7-md-on-surface-variant: #c3c7cf; --f7-md-on-surface-variant-rgb: 195, 199, 207;
@@ -63,7 +63,7 @@
 .progressbar { margin: 8px 0; }
 
 /* 항목 본문: 휴대폰에서 읽기 좋은 글자 크기·줄 간격, 넓은 표·코드는 가로 스크롤 */
-.ll-article { font-size: 17px; line-height: 1.7; word-break: keep-all; overflow-wrap: anywhere; }
+.ll-article { font-size: 17px; line-height: 1.75; word-break: keep-all; overflow-wrap: anywhere; }
 .ll-article h1 { font-size: 24px; line-height: 1.35; margin: 4px 0 16px; }
 .ll-article h3 { font-size: 20px; margin: 24px 0 8px; }
 .ll-article h4, .ll-article h5 { margin: 20px 0 8px; }
@@ -108,3 +108,54 @@
 
 /* 당겨서 새로고침 표시: 머리줄 바로 아래에서 내려온다 */
 .ll-ptr { position: absolute; left: 0; right: 0; top: calc(var(--f7-navbar-height, 56px) + var(--f7-safe-area-top, 0px)); z-index: 400; height: 44px; display: flex; align-items: center; justify-content: center; font-size: 14px; color: var(--f7-list-item-footer-text-color, #8e8e93); background: var(--f7-page-bg-color, #fff); border-bottom: 1px solid var(--f7-list-item-border-color, rgba(0, 0, 0, 0.12)); pointer-events: none; }
+
+/* 넓은 화면(768px 이상)에서도 휴대폰 폭으로 읽게 */
+@media (min-width: 768px) { #app .view-main .page-content > * { max-width: 560px; margin-left: auto; margin-right: auto; } }
+.ll-article p { margin: 0 0 16px; }
+
+/* 지금 탭: 옅은 파란 바탕 + 굵은 글자 */
+#tabbar .tab-link-active { background: rgba(var(--f7-theme-color-rgb), 0.12); border-radius: 12px; font-weight: 700; }
+
+/* 상태 문장(채움 버튼 대신 지금 상태를 알리는 회색 한 줄) */
+.ll-state { color: var(--f7-list-item-footer-text-color, #8e8e93); font-size: 15px; text-align: center; margin: 8px 0; }
+.ll-eyebrow { font-size: 12px; font-weight: 600; color: var(--f7-theme-color); margin: 0 0 4px; }
+.ll-continue-title { font-size: 17px; font-weight: 600; margin: 0 0 12px; }
+.ll-topic-row { align-items: center; }
+.ll-legend { text-align: center; }
+.ll-done-title { font-size: 20px; font-weight: 700; margin: 4px 0 8px; }
+.ll-done-partial { color: var(--f7-list-item-footer-text-color, #8e8e93); }
+
+/* 읽음 버튼(읽은 항목): 초록 테두리 + 둘째 줄 작은 글자 */
+.button.ll-read-on { height: auto; min-height: 48px; flex-direction: column; border: 2px solid var(--f7-color-green, #34c759); color: var(--f7-color-green, #34c759); line-height: 1.2; padding: 6px 12px; }
+.ll-read-on small { font-size: 12px; font-weight: 400; opacity: 0.8; text-transform: none; }
+
+/* 단계 점·겹친 진행 막대(읽음 파랑 · 테스트 통과 주황 · 숙달 초록) */
+.ll-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; background: #8e8e93; }
+.ll-dot-read { background: var(--f7-color-blue, #007aff); }
+.ll-dot-tested { background: var(--f7-color-orange, #ff9500); }
+.ll-dot-mastered, .ll-dot-on { background: var(--f7-color-green, #34c759); }
+.ll-dot-off { background: #8e8e93; }
+.ll-stack { position: relative; height: 8px; border-radius: 4px; overflow: hidden; background: rgba(127, 127, 127, 0.2); }
+.ll-stack > span { position: absolute; left: 0; top: 0; bottom: 0; }
+.ll-stack-read { background: var(--f7-color-blue, #007aff); }
+.ll-stack-tested { background: var(--f7-color-orange, #ff9500); }
+.ll-stack-mastered { background: var(--f7-color-green, #34c759); }
+.ll-stack-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 8px; font-size: 13px; color: var(--f7-list-item-footer-text-color, #8e8e93); }
+.ll-stack-total { margin-left: auto; }
+
+/* 서랍 메뉴: 동기화 상태를 패널 맨 아래에 고정 */
+#menu .page { display: flex; flex-direction: column; }
+#menu .page-content { flex: 1; min-height: 0; position: relative; height: auto; }
+.ll-menu-sync { flex: none; border-top: 1px solid var(--f7-list-item-border-color, rgba(0, 0, 0, 0.12)); padding-bottom: var(--f7-safe-area-bottom, env(safe-area-inset-bottom)); }
+.ll-menu-sync .list { margin: 0; }
+
+/* 동기화 설정 상태 블록 */
+.ll-sync-state-head { font-size: 20px; font-weight: 700; display: flex; align-items: center; }
+.ll-sync-state p { margin: 4px 0; }
+
+/* 테스트 끝 점수 카드·틀린 문제 */
+.ll-score-num { font-size: 20px; margin-bottom: 12px; }
+.ll-score p { margin: 12px 0 0; }
+.ll-wrong .item-title { white-space: normal; line-height: 1.4; }
+.ll-wrong .item-footer { white-space: normal; margin-top: 4px; }
+.ll-wrong .item-footer.ll-wrong-right { color: var(--f7-color-green, #2ca84b); }
