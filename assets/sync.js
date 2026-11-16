@@ -62,11 +62,11 @@ async function sendResult(topicId, text) {
   if (!cfg) throw new Error("동기화 설정이 없습니다.");
   const d = new Date();
   const p2 = (n) => String(n).padStart(2, "0");
-  const stamp = `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}-${p2(d.getHours())}${p2(d.getMinutes())}`;
+  const stamp = `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}-${p2(d.getHours())}${p2(d.getMinutes())}${p2(d.getSeconds())}`;
   const path = `results/${topicId}/${stamp}.md`;
-  const existing = await ghGet(cfg, path);
-  const put = await ghPut(cfg, path, text + "\n", existing.sha, `result: ${topicId} ${stamp}`);
-  if (put.conflict) throw new Error("같은 분에 보낸 결과와 충돌했습니다. 1분 뒤 다시 보내세요.");
+  // sha 없이 만든다 — 같은 이름이 있으면 덮지 않고 충돌로 끝난다
+  const put = await ghPut(cfg, path, text + "\n", undefined, `result: ${topicId} ${stamp}`);
+  if (put.conflict) throw new Error("같은 초에 보낸 결과가 이미 있습니다. 잠시 뒤 다시 보내세요.");
   return path;
 }
 

@@ -45,19 +45,18 @@ function saveState(id, state) {
 
 // ---------- 동기화(assets/sync.js): 주제를 처음 열 때 받아 합치고, 저장 2초 뒤·화면을 떠날 때 올린다 ----------
 const pulled = new Set();
-let pushTimer = null;
-let pushTopic = null;
+// 주제마다 따로 기다린다 — 다른 주제를 열어도 앞 주제 push 가 취소되지 않게
+const pushTimers = new Map();
 let inSession = false;
 let syncStatus = "";
 function schedulePush(id) {
   if (!syncConfig()) return;
-  clearTimeout(pushTimer);
-  pushTopic = id;
-  pushTimer = setTimeout(() => runSync(id), 2000);
+  clearTimeout(pushTimers.get(id));
+  pushTimers.set(id, setTimeout(() => runSync(id), 2000));
 }
 async function runSync(id) {
-  clearTimeout(pushTimer);
-  pushTimer = null;
+  clearTimeout(pushTimers.get(id));
+  pushTimers.delete(id);
   const before = localStorage.getItem(STORE_PREFIX + id);
   try {
     const merged = await syncTopic(id, loadState(id));
@@ -74,7 +73,7 @@ async function runSync(id) {
   }
 }
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "hidden" && pushTimer && pushTopic) runSync(pushTopic);
+  if (document.visibilityState === "hidden") for (const id of [...pushTimers.keys()]) runSync(id);
 });
 function toggleRead(id, itemId, on) {
   const s = loadState(id);
@@ -189,19 +188,20 @@ function continueTarget(entries) {
 async function viewHome(root) {
   setFrame("학습 온보딩", null);
   const topics = await getTopics();
-  const entries = [];
-  const rows = await Promise.all(topics.map(async (t) => {
+  const loaded = await Promise.all(topics.map(async (t) => {
     try {
       const topic = await getTopic(t.id);
       const state = loadState(t.id);
-      entries.push({ t, topic, state });
       const p = topicProgress(topic, state);
-      return `<li><a class="item-link item-content" href="#/t/${enc(t.id)}"><div class="item-inner ll-topic-row">
-        <div class="item-title">${esc(t.title)}</div>${stageBar(topic, state, p)}</div></a></li>`;
+      return { entry: { t, topic, state }, html: `<li><a class="item-link item-content" href="#/t/${enc(t.id)}"><div class="item-inner ll-topic-row">
+        <div class="item-title">${esc(t.title)}</div>${stageBar(topic, state, p)}</div></a></li>` };
     } catch (e) {
-      return `<li class="item-content"><div class="item-inner">${esc(t.title)} — 읽지 못함: ${esc(e.message)}</div></li>`;
+      return { html: `<li class="item-content"><div class="item-inner">${esc(t.title)} — 읽지 못함: ${esc(e.message)}</div></li>` };
     }
   }));
+  // topics.json 순서대로 — 불러오기가 끝난 순서를 쓰면 「이어 읽기」 주제가 새로고침마다 바뀐다
+  const entries = loaded.filter((r) => r.entry).map((r) => r.entry);
+  const rows = loaded.map((r) => r.html);
   const go = continueTarget(entries);
   const goCard = go ? (() => {
     const ch = findChapter(go.topic, go.next.chapterId);
@@ -427,6 +427,13 @@ function runSession(root, id, cards, label, backHref) {
     const card = sess.next();
     if (!card) {
       inSession = false;
+      // 아래 탭 배지(오늘 재점검 + 새 문제)를 회차 결과로 다시 센다
+      const shownAt = location.hash;
+      if (!$("#tabbar").classList.contains("hidden")) getTopic(id).then((topic) => {
+        if (location.hash !== shownAt || inSession) return;
+        const tab = $("#tabbar-inner .tab-link-active");
+        setFrame($("#page-title").textContent, topicTabs(id, tab ? ["toc", "review", "log"][[...tab.parentNode.children].indexOf(tab)] : null, topicProgress(topic, state)));
+      }).catch(() => {});
       const failed = sess.failed;
       const cardById = Object.fromEntries(cards.map((c) => [c.id, c]));
       // 틀린 문제의 내 답 = 이 회차 기록에서 그 카드의 마지막 답
@@ -460,7 +467,7 @@ function showCard(root, card, label, ratio, onGrade) {
   let conf = null;
   let picked = null;
   // 선택지는 매번 순서를 섞는다(자리로 외우지 않게). value 는 원래 번호
-  const order = card.choices ? card.choices.map((_, i) => i).sort(() => Math.random() - 0.5) : [];
+  const order = card.choices ? shuffleInPlace(card.choices.map((_, i) => i)) : [];
   const choices = card.choices
     ? `<div class="list list-strong inset list-dividers ll-choices"><ul>${order.map((i) => `<li><label class="item-radio item-content"><input type="radio" name="ll-choice" value="${i}"><i class="icon icon-radio"></i><div class="item-inner"><div class="item-title">${esc(card.choices[i])}</div></div></label></li>`).join("")}</ul></div>`
     : `<div class="block"><textarea id="my-answer" class="ll-answer-input" placeholder="답을 먼저 적거나 소리 내어 말합니다"></textarea></div>`;

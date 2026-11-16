@@ -179,7 +179,7 @@ function adjustGrade(grade, conf) {
 // 리뷰 세션(Claude)에 붙여 넣을 요약 — 항목 단계·틀린 카드·확신했는데 틀린 카드
 function feedbackSummary(topic, state, now = Date.now()) {
   const p = topicProgress(topic, state, now);
-  const lines = [`[학습 결과] ${topic.title} (${topic.id}) ${new Date(now).toISOString().slice(0, 16)}`];
+  const lines = [`[학습 결과] ${topic.title} (${topic.id}) ${localStamp(now)}`];
   lines.push(`항목 읽음 ${p.readTotal}/${p.items} · 장 ${p.chapters}: 읽는 중 ${p.reading} · 읽음 ${p.read} · 테스트 통과 ${p.tested} · 숙달 ${p.mastered} / 오늘 재점검 ${p.due} · 새 문항 ${p.fresh}`);
   const recent = state.log.slice(-200);
   const wrong = recent.filter((l) => l.grade === 0);
@@ -195,6 +195,14 @@ function feedbackSummary(topic, state, now = Date.now()) {
     lines.push(`- ${cid} 틀림 ${count[cid].n}${count[cid].confident ? ` (확신 ${count[cid].confident})` : ""}${c ? ` ${c.q.slice(0, 60)}` : ""}${last ? ` / 내 답: ${last.answer.slice(0, 80)}` : ""}`);
   }
   return lines.join("\n");
+}
+
+// 로컬 시각 + 시간대 — 결과 파일 이름(로컬 시각)과 같은 시각으로 읽히게
+function localStamp(t) {
+  const d = new Date(t);
+  const p2 = (n) => String(n).padStart(2, "0");
+  const off = -d.getTimezoneOffset();
+  return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}T${p2(d.getHours())}:${p2(d.getMinutes())}${off >= 0 ? "+" : "-"}${p2(Math.floor(Math.abs(off) / 60))}:${p2(Math.abs(off) % 60)}`;
 }
 
 function shuffleInPlace(a) {

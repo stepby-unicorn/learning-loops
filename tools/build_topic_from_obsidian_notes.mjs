@@ -273,6 +273,11 @@ function main() {
     console.log(JSON.stringify(report));
     process.exit(1);
   }
+  if (missing.length && !args.dryRun) {
+    console.error(`장 노트 ${missing.length}개 없음 — 쓰지 않음: ${missing.join(", ")}`);
+    console.log(JSON.stringify(report));
+    process.exit(1);
+  }
   if (!args.dryRun) {
     fs.rmSync(outDir, { recursive: true, force: true });
     fs.mkdirSync(outDir, { recursive: true });

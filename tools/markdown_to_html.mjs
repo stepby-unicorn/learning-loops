@@ -97,7 +97,11 @@ function renderList(block) {
   const li = items.map((it) => {
     const task = it.text.match(/^\[( |x)\]\s+(.*)$/i);
     const body = task ? `<span class="ll-task">${task[1].trim() ? "☑" : "☐"}</span> ${inline(task[2])}` : inline(it.text);
-    return `<li>${body}${it.kids.length ? renderList(it.kids) : ""}</li>`;
+    // 목록 표시 없이 들여쓴 줄은 그 항목 글의 이어지는 줄, 그 뒤 목록 표시 줄부터 하위 목록
+    const at = it.kids.findIndex((k) => /^\s*([-*+]|\d+[.)])\s+/.test(k));
+    const cont = at < 0 ? it.kids : it.kids.slice(0, at);
+    const sub = at < 0 ? [] : it.kids.slice(at);
+    return `<li>${body}${cont.map((k) => `<br>${inline(k.trim())}`).join("")}${sub.length ? renderList(sub) : ""}</li>`;
   });
   return ordered ? `<ol>${li.join("")}</ol>` : `<ul>${li.join("")}</ul>`;
 }
