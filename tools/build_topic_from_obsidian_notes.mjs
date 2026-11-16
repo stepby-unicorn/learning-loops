@@ -14,6 +14,8 @@
 //   - 장 노트 `## ` 절 = 읽음 항목(ID `<장>#<절 제목>`). `검수`·`출처`·`이해 확인 질문` 과 제외 절은 항목이 아니다
 //   - 문항 = `## 이해 확인 질문` 안 `> [!question]- <장>-Q03 질문` callout, 답 = 정답 → `이유:` → `단서:`.
 //     옛 꼴 `> [!question]- 1. 질문` 은 순서대로 <장>-Q01 로 읽는다
+//   - 선택지 문항 = callout 안 `선택지: 보기 | **정답 보기** | 보기` 줄 — 굵게 한 보기 하나가 정답이고 사이트가 자동 채점한다.
+//     굵은 보기가 하나가 아니면 exit 1
 //   - 출력에 비밀값 꼴(SECRET_PATTERNS — 키·토큰·개인 키·IP·AWS 계정 번호·내부 URL)이나
 //     금지어 파일(줄마다 한 단어, # 은 설명)의 말이 있으면 쓰지 않고 exit 1
 import fs from "node:fs";
@@ -95,6 +97,14 @@ function splitAnswer(lines) {
 
 const plain = (s) => s.replace(/\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|([^\]]+))?\]\]/g, (_, n, a) => a || n).replace(/\*\*([^*]+)\*\*/g, "$1").replace(/`([^`]+)`/g, "$1");
 
+// `선택지: 보기 | **정답** | 보기` → { list, answerIndex }
+export function parseChoices(line, id) {
+  const list = line.replace(/^\s*(?:\*\*)?선택지(?:\*\*)?\s*[:：]\s*/, "").split(/\s+\|\s+/).map((x) => x.trim()).filter(Boolean);
+  const marked = list.map((x, i) => (/^\*\*[\s\S]+\*\*$/.test(x) ? i : -1)).filter((i) => i >= 0);
+  if (list.length < 2 || marked.length !== 1) throw new Error(`${id} 선택지: 보기 2개 이상, 굵게 한 정답 1개가 필요합니다 (보기 ${list.length} · 굵게 ${marked.length})`);
+  return { list: list.map((x) => plain(x.replace(/^\*\*([\s\S]+)\*\*$/, "$1"))), answerIndex: marked[0] };
+}
+
 export function parseQuestions(lines, chapterId) {
   const cards = [];
   let cur = null;
@@ -120,8 +130,11 @@ export function parseQuestions(lines, chapterId) {
   return cards
     .filter((c) => !/^~~/.test(c.q))
     .map((c) => {
+      const choiceLine = c.body.findIndex((l) => /^\s*(?:\*\*)?선택지(?:\*\*)?\s*[:：]/.test(l));
+      const choices = choiceLine < 0 ? null : parseChoices(c.body.splice(choiceLine, 1)[0], c.id);
       const { a, why, hint } = splitAnswer(c.body);
       const card = { id: c.id, q: plain(c.q), a: plain(a) };
+      if (choices) { card.choices = choices.list; card.answerIndex = choices.answerIndex; }
       if (why) card.why = plain(why);
       if (hint) card.hint = plain(hint);
       return card;

@@ -60,4 +60,12 @@ t("볼트 세션·결정 번호는 걷어 내고 해시 방식 이름 S256 은 �
     "내부 결정 은 [[M365 교체]] 참고, [확인: 조사] — 내부 결정, 끝");
   assert.equal(dropVaultCodes("method=S256 x5t#S256 RS256 ES256"), "method=S256 x5t#S256 RS256 ES256");
 });
+t("선택지 줄 → choices·answerIndex, 답·이유는 그대로", () => {
+  const [c] = parseQuestions(["> [!question]- LSC01-Q02 질문?", "> 시험 연습과 분산 학습", "> 선택지: 다시 읽기와 요약 | **시험 연습과 분산 학습** | 형광펜", "> 이유: 효용 높음", ""], "LSC01");
+  assert.deepEqual([c.choices, c.answerIndex, c.a, c.why], [["다시 읽기와 요약", "시험 연습과 분산 학습", "형광펜"], 1, "시험 연습과 분산 학습", "효용 높음"]);
+});
+t("굵은 정답이 없거나 둘이면 오류", () => {
+  assert.throws(() => parseQuestions(["> [!question]- LSC01-Q02 질문?", "> 답", "> 선택지: 가 | 나", ""], "LSC01"), /굵게 0/);
+  assert.throws(() => parseQuestions(["> [!question]- LSC01-Q02 질문?", "> 답", "> 선택지: **가** | **나**", ""], "LSC01"), /굵게 2/);
+});
 console.log(`${n}/${n} 통과`);

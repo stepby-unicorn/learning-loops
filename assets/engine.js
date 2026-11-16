@@ -1,12 +1,14 @@
 // 학습 온보딩 엔진 — 화면과 무관한 규칙(읽음·항목 단계·재점검 일정). 브라우저와 node 시험이 같이 쓴다.
-// 진행 상태는 서버로 보내지 않고 이 브라우저 localStorage 에만 저장한다.
+// 진행 상태는 이 브라우저 localStorage 에 저장하고, 동기화를 켜면 비공개 저장소의 사본과 mergeStates 로 합친다.
 const SCHEDULE = {
   // 상자 번호 → 다음 점검까지 날 수. 상자 0 = 아직 첫 회차를 통과하지 않은 카드
   intervals: [0, 1, 3, 7, 21, 60, 180],
   // 마지막 상자를 통과해도 이 간격으로 계속 다시 점검한다(졸업 없음)
   maintenance: 180,
-  // 새 카드는 첫 회차 안에서 이 횟수만큼 맞혀야 상자 1로 간다
-  initialCriterion: 3,
+  // 새 카드는 첫 회차 안에서 이 횟수만큼 맞혀야 상자 1로 간다. 여러 날 반복은 재점검 간격이 맡는다
+  initialCriterion: 1,
+  // 한 회차에서 틀린 카드를 회차 끝에 다시 내는 횟수. 그래도 틀리면 회차를 끝내고 다음 회차·재점검으로 넘긴다
+  retriesPerSession: 1,
   // 이 상자 이상이면 「숙달」(간격 둔 재점검 3회 통과 — 1·3·7일)
   masteredBox: 4,
 };
@@ -102,42 +104,71 @@ function topicProgress(topic, state, now = Date.now()) {
   return { items: items.length, readTotal, chapters: topic.chapters.length, ...ch, fresh: fresh.length, due: due.length, nextDue };
 }
 
-// 한 회차 진행기 — 틀린 카드는 회차 끝에 다시 나오고, 새 카드는 initialCriterion 번 맞혀야 끝난다.
-// 화면은 next() 로 카드를 받고 grade() 로 결과를 넘긴다. state 를 직접 고치므로 호출한 쪽이 저장한다.
+// 한 회차 진행기 — 틀린 카드는 회차 끝에 retriesPerSession 번 다시 나오고, 새 카드는 initialCriterion 번 맞히면 통과한다.
+// 회차 길이는 카드 수 + 다시 나온 수로 정해져 반드시 끝난다. 화면은 next() 로 카드를 받고 grade() 로 결과를 넘긴다.
+// state 를 직접 고치므로 호출한 쪽이 저장한다.
 function createSession(state, cards, now = () => Date.now(), shuffle = shuffleInPlace) {
   const queue = shuffle(cards.map((c) => c.id));
   const byId = Object.fromEntries(cards.map((c) => [c.id, c]));
   const hits = {};
+  const retries = {};
   const lapsed = new Set();
-  let finished = 0;
+  let passed = 0;
+  let answered = 0;
+  let steps = cards.length;
+  const failed = [];
   return {
     total: cards.length,
-    get finished() { return finished; },
+    get passed() { return passed; },
+    get answered() { return answered; },
+    // 이 회차에서 답할 전체 수(다시 나온 카드 포함) — 진행 막대 분모
+    get steps() { return steps; },
+    // 다시 나와서도 틀려 이 회차에 통과하지 못한 카드 id
+    get failed() { return failed.slice(); },
     next() { return queue.length ? byId[queue[0]] : null; },
     grade(grade, conf, answer) {
       const id = queue.shift();
+      answered++;
       const cs = state.cards[id] || { box: 0 };
       state.log.push({ id, t: now(), grade, conf, answer: answer || undefined });
       const isNew = !cs.box;
+      const retry = () => {
+        if ((retries[id] || 0) < SCHEDULE.retriesPerSession) { retries[id] = (retries[id] || 0) + 1; queue.push(id); steps++; }
+        else failed.push(id);
+      };
       if (grade === 0) {
         if (!isNew) { Object.assign(cs, nextReview(cs, 0, now())); lapsed.add(id); }
         hits[id] = 0;
-        queue.push(id);
+        retry();
       } else if (lapsed.has(id)) {
         // 이번 회차에 틀렸던 기존 카드: 다시 맞혀도 상자 1·내일 점검은 그대로 둔다
-        finished++;
+        passed++;
       } else if (isNew) {
         hits[id] = (hits[id] || 0) + (grade === 2 ? 1 : 0);
-        if (hits[id] >= SCHEDULE.initialCriterion) { Object.assign(cs, nextReview({ box: 0 }, 2, now())); finished++; }
-        else queue.push(id);
+        if (hits[id] >= SCHEDULE.initialCriterion) { Object.assign(cs, nextReview({ box: 0 }, 2, now())); passed++; }
+        else retry();
       } else {
         Object.assign(cs, nextReview(cs, grade, now()));
-        finished++;
+        passed++;
       }
       cs.last = now();
       state.cards[id] = cs;
     },
   };
+}
+
+// 두 기기의 진행 상태를 합친다 — 읽음은 합집합(먼저 읽은 시각), 카드는 마지막으로 채점한(last 큰) 쪽, 기록은 (id, t) 로 중복 없이 시각순.
+// 한 기기에서 읽음을 취소한 것은 다른 기기에 읽음이 남아 있으면 다시 살아난다(합집합).
+function mergeStates(a, b) {
+  const x = normalizeState(a);
+  const y = normalizeState(b);
+  const read = { ...x.read };
+  for (const [k, t] of Object.entries(y.read)) read[k] = read[k] ? Math.min(read[k], t) : t;
+  const cards = { ...x.cards };
+  for (const [k, c] of Object.entries(y.cards)) if (!cards[k] || (c.last || 0) > (cards[k].last || 0)) cards[k] = c;
+  const seen = new Set();
+  const log = [...x.log, ...y.log].filter((l) => { const key = `${l.id}|${l.t}`; if (seen.has(key)) return false; seen.add(key); return true; }).sort((p, q) => p.t - q.t);
+  return { read, cards, log };
 }
 
 // 맞혔지만 확신이 없으면 부분으로 본다(운으로 맞힌 답은 일찍 다시 본다)
@@ -175,5 +206,5 @@ function shuffleInPlace(a) {
 }
 
 if (typeof module !== "undefined") {
-  module.exports = { SCHEDULE, DAY, STORE_PREFIX, STAGE_LABEL, todayStart, emptyState, normalizeState, nextReview, cardStatus, allItems, itemStage, chapterStage, reviewQueue, topicProgress, createSession, adjustGrade, feedbackSummary };
+  module.exports = { SCHEDULE, DAY, STORE_PREFIX, STAGE_LABEL, todayStart, emptyState, normalizeState, nextReview, cardStatus, allItems, itemStage, chapterStage, reviewQueue, topicProgress, createSession, mergeStates, adjustGrade, feedbackSummary };
 }

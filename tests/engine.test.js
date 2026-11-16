@@ -32,12 +32,13 @@ cases.push(["문항 없는 장은 읽음이 끝 단계", () => {
   const s = E.emptyState(); s.read["T03#원리"] = now;
   assert.strictEqual(E.chapterStage(s, ch("T03")), "read");
 }]);
-cases.push(["첫 회차: 문항마다 3번 맞혀야 끝, 끝나면 테스트 통과", () => {
+cases.push(["첫 회차: 문항마다 1번 맞히면 통과, 끝나면 테스트 통과", () => {
   const s = E.emptyState(); s.read["T01#원리"] = now; s.read["T01#방법"] = now;
   const sess = E.createSession(s, E.reviewQueue(topic, s, now).fresh, () => now, noShuffle);
   let n = 0;
   while (sess.next()) { sess.grade(2, 2, ""); n++; }
-  assert.strictEqual(n, 6);
+  assert.strictEqual(n, 2);
+  assert.deepStrictEqual([sess.passed, sess.answered, sess.steps], [2, 2, 2]);
   assert.strictEqual(E.chapterStage(s, ch("T01")), "tested");
   assert.strictEqual(E.cardStatus(s, "T01-Q01", now), "later");
 }]);
@@ -47,6 +48,29 @@ cases.push(["틀린 문항은 회차 끝에 다시 나옴", () => {
   sess.grade(0, 2, "모름");
   assert.strictEqual(sess.next().id, "T02-Q01");
   assert.strictEqual(s.log.length, 1);
+}]);
+cases.push(["틀린 문항은 회차 끝에 한 번만 다시 나오고, 또 틀리면 회차가 끝남", () => {
+  const s = E.emptyState(); s.read["T01#원리"] = now; s.read["T01#방법"] = now;
+  const sess = E.createSession(s, E.reviewQueue(topic, s, now).fresh, () => now, noShuffle);
+  sess.grade(0, 1, ""); // Q01 틀림 → 끝에 다시
+  sess.grade(2, 2, ""); // Q02 맞음
+  assert.deepStrictEqual([sess.answered, sess.steps, sess.passed], [2, 3, 1]);
+  assert.strictEqual(sess.next().id, "T01-Q01");
+  sess.grade(0, 1, ""); // 또 틀림 → 끝
+  assert.strictEqual(sess.next(), null);
+  assert.deepStrictEqual(sess.failed, ["T01-Q01"]);
+  assert.strictEqual(E.cardStatus(s, "T01-Q01", now), "new");
+}]);
+cases.push(["두 기기 상태 합치기: 읽음 합집합·카드는 마지막 채점·기록 중복 없음", () => {
+  const a = E.emptyState(); const b = E.emptyState();
+  a.read["T01#원리"] = now + 5; b.read["T01#원리"] = now; b.read["T02#원리"] = now;
+  a.cards["T01-Q01"] = { box: 1, due: 1, last: now }; b.cards["T01-Q01"] = { box: 2, due: 2, last: now + 1 };
+  a.log.push({ id: "T01-Q01", t: now, grade: 2 }); b.log.push({ id: "T01-Q01", t: now, grade: 2 }, { id: "T01-Q01", t: now + 1, grade: 2 });
+  const m = E.mergeStates(a, b);
+  assert.deepStrictEqual(m.read, { "T01#원리": now, "T02#원리": now });
+  assert.strictEqual(m.cards["T01-Q01"].box, 2);
+  assert.strictEqual(m.log.length, 2);
+  assert.deepStrictEqual(E.mergeStates(m, m), m);
 }]);
 cases.push(["다음 날 재점검 대상으로 나오고, 모두 상자 4 이상이면 숙달", () => {
   const s = E.emptyState(); s.read["T02#원리"] = now;
