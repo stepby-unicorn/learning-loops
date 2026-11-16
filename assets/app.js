@@ -379,7 +379,9 @@ function runSession(root, id, cards, label, backHref) {
           ${failed.length ? `<p>두 번 틀린 문제 ${failed.length}개는 다음 회차에 다시 나옵니다.</p><ul>${failed.map((f) => `<li>${esc(f)} ${esc(cardById[f]?.q || "")}</li>`).join("")}</ul>` : "<p>모두 통과했습니다. 다음 재점검 날짜는 목차·복습 화면에 나옵니다.</p>"}
           <p class="ll-muted">결과는 <a href="#/t/${enc(id)}/log">기록</a>에서 「결과 보내기」로 리뷰 세션에 넘깁니다.</p>
         </div></div>
-        <div class="block"><a class="button button-fill button-large" href="${backHref}">돌아가기</a></div>`;
+        <div class="block"><button class="button button-fill button-large" id="btn-back">돌아가기</button></div>`;
+      // 회차는 주소를 바꾸지 않고 진행해 backHref 가 지금 주소와 같을 수 있다 — 같으면 hashchange 가 없으니 직접 다시 그린다
+      $("#btn-back").onclick = () => { if (location.hash === backHref) route(); else location.hash = backHref; };
       return;
     }
     showCard(root, card, `${label} · ${sess.answered + 1}/${sess.steps} · 통과 ${sess.passed}`, sess.answered / sess.steps, (grade, conf, answer) => {
@@ -397,7 +399,7 @@ function showCard(root, card, label, ratio, onGrade) {
   // 선택지는 매번 순서를 섞는다(자리로 외우지 않게). value 는 원래 번호
   const order = card.choices ? card.choices.map((_, i) => i).sort(() => Math.random() - 0.5) : [];
   const choices = card.choices
-    ? `<div class="list list-strong inset ll-choices"><ul>${order.map((i) => `<li><label class="item-radio item-content"><input type="radio" name="ll-choice" value="${i}"><i class="icon icon-radio"></i><div class="item-inner"><div class="item-title">${esc(card.choices[i])}</div></div></label></li>`).join("")}</ul></div>`
+    ? `<div class="list list-strong inset list-dividers ll-choices"><ul>${order.map((i) => `<li><label class="item-radio item-content"><input type="radio" name="ll-choice" value="${i}"><i class="icon icon-radio"></i><div class="item-inner"><div class="item-title">${esc(card.choices[i])}</div></div></label></li>`).join("")}</ul></div>`
     : `<div class="block"><textarea id="my-answer" class="ll-answer-input" placeholder="답을 먼저 적거나 소리 내어 말합니다"></textarea></div>`;
   root.innerHTML = `<div class="block"><p class="ll-muted">${esc(label)}</p>${progressBar(ratio)}</div>
     <div class="card ll-flashcard"><div class="card-header"><span class="chip"><span class="chip-label">${esc(card.id)}</span></span><span class="ll-muted">${esc(card.chapterTitle || "")}</span></div>
@@ -610,5 +612,41 @@ async function route() {
     root.innerHTML = `<div class="block">불러오지 못했습니다: ${esc(e.message)}</div>`;
   }
 }
+// 당겨서 새로고침 — 스크롤이 문서가 아니라 #content 안에서 일어나 Safari 기본 동작이 걸리지 않는다.
+// 맨 위에서 PTR_PULL 넘게 당겼다 놓으면 지금 주제를 동기화한 뒤 페이지를 다시 연다. 테스트 회차 중·서랍 메뉴가 열렸을 때는 끈다.
+const PTR_PULL = 80;
+(function setupPullToRefresh() {
+  const el = $("#content");
+  const ind = document.createElement("div");
+  ind.className = "ll-ptr";
+  ind.id = "ptr";
+  $("#page").appendChild(ind);
+  let startY = null;
+  let armed = false;
+  const reset = () => { startY = null; armed = false; ind.style.opacity = 0; ind.style.transform = "translateY(-100%)"; };
+  reset();
+  el.addEventListener("touchstart", (e) => {
+    if (inSession || el.scrollTop > 0 || $("#menu").classList.contains("panel-in") || e.touches.length !== 1) return;
+    startY = e.touches[0].clientY;
+  }, { passive: true });
+  el.addEventListener("touchmove", (e) => {
+    if (startY === null) return;
+    const dy = e.touches[0].clientY - startY;
+    if (dy <= 0 || el.scrollTop > 0) { reset(); return; }
+    armed = dy >= PTR_PULL;
+    ind.textContent = armed ? "놓으면 새로고침" : "당겨서 새로고침";
+    ind.style.opacity = Math.min(1, dy / PTR_PULL);
+    ind.style.transform = `translateY(${(Math.min(dy, PTR_PULL) / PTR_PULL - 1) * 100}%)`;
+  }, { passive: true });
+  el.addEventListener("touchend", async () => {
+    if (!armed) { reset(); return; }
+    startY = null;
+    ind.textContent = "새로고침 중…";
+    const r = parseRoute();
+    if (r.topic && syncConfig()) await Promise.race([runSync(r.topic), new Promise((ok) => setTimeout(ok, 5000))]);
+    location.reload();
+  });
+  el.addEventListener("touchcancel", reset);
+})();
 window.addEventListener("hashchange", route);
 route();
