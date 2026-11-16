@@ -77,7 +77,7 @@ document.addEventListener("visibilitychange", () => {
 });
 function toggleRead(id, itemId, on) {
   const s = loadState(id);
-  if (on) s.read[itemId] = Date.now(); else delete s.read[itemId];
+  setRead(s, itemId, on);
   saveState(id, s);
 }
 const findChapter = (topic, chapterId) => topic.chapters.find((c) => c.id === chapterId);
@@ -448,6 +448,9 @@ function runSession(root, id, cards, label, backHref) {
         ${failed.length ? `<div class="block-title">틀린 문제 ${failed.length}개 — 다음 회차에 다시 나와요</div>
         <div class="list list-strong inset list-dividers ll-wrong"><ul>${failed.map((f) => `<li class="item-content"><div class="item-inner"><div class="item-title">${esc(f)} ${esc(cardById[f]?.q || "")}
           <div class="item-footer">내 답: ${esc(myAnswer(f) || "—")}</div><div class="item-footer ll-wrong-right">정답: ${esc(cardById[f]?.a || "")}</div></div></div></li>`).join("")}</ul></div>` : `<div class="block"><p class="ll-state">모두 통과했어요.</p></div>`}
+        ${sess.unsure.length ? `<div class="block-title">확신 없이 맞힌 문제 ${sess.unsure.length}개 — 통과로 쳤어요, 정답을 한 번 더 보세요</div>
+        <div class="list list-strong inset list-dividers ll-unsure"><ul>${sess.unsure.map((u) => `<li class="item-content"><div class="item-inner"><div class="item-title">${esc(u)} ${esc(cardById[u]?.q || "")}
+          <div class="item-footer">정답: ${esc(cardById[u]?.a || "")}</div></div></div></li>`).join("")}</ul></div>` : ""}
         <div class="block grid grid-gap"><button class="button button-fill button-large" id="btn-back">돌아가기</button>
           <p class="ll-muted">결과는 <a href="#/t/${enc(id)}/log">기록</a>에서 「결과 보내기」로 리뷰 세션에 넘겨요.</p></div>`;
       // 회차는 주소를 바꾸지 않고 진행해 backHref 가 지금 주소와 같을 수 있다 — 같으면 hashchange 가 없으니 직접 다시 그린다
@@ -455,7 +458,7 @@ function runSession(root, id, cards, label, backHref) {
       return;
     }
     showCard(root, card, `${label} · ${sess.answered + 1}/${sess.steps} · 통과 ${sess.passed}`, sess.answered / sess.steps, (grade, conf, answer) => {
-      sess.grade(adjustGrade(grade, conf), conf, answer);
+      sess.grade(adjustGrade(grade, conf), conf, answer, grade === 2);
       saveState(id, state);
       step();
     });

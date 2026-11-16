@@ -26,13 +26,19 @@ function todayStart(t = Date.now()) {
 }
 
 function emptyState() {
-  return { read: {}, cards: {}, log: [] };
+  return { read: {}, unread: {}, cards: {}, log: [] };
 }
 
 // 저장소가 없거나 깨졌으면 빈 상태. 옛 필드가 빠졌으면 채운다.
 function normalizeState(raw) {
   const s = raw && typeof raw === "object" ? raw : {};
-  return { read: s.read || {}, cards: s.cards || {}, log: Array.isArray(s.log) ? s.log : [] };
+  return { read: s.read || {}, unread: s.unread || {}, cards: s.cards || {}, log: Array.isArray(s.log) ? s.log : [] };
+}
+
+// 읽음 체크·취소 — 취소는 unread 에 시각을 남겨 다른 기기의 옛 읽음보다 나중이면 이긴다(mergeStates)
+function setRead(state, itemId, on, t = Date.now()) {
+  if (on) { state.read[itemId] = t; delete state.unread[itemId]; }
+  else { delete state.read[itemId]; state.unread[itemId] = t; }
 }
 
 // 채점 결과로 다음 상자·점검일을 정한다
@@ -113,6 +119,7 @@ function createSession(state, cards, now = () => Date.now(), shuffle = shuffleIn
   const hits = {};
   const retries = {};
   const lapsed = new Set();
+  const unsure = [];
   let passed = 0;
   let answered = 0;
   let steps = cards.length;
@@ -125,9 +132,13 @@ function createSession(state, cards, now = () => Date.now(), shuffle = shuffleIn
     get steps() { return steps; },
     // 다시 나와서도 틀려 이 회차에 통과하지 못한 카드 id
     get failed() { return failed.slice(); },
+    // 맞혔지만 확신이 「모름」이던 카드 id — 끝 화면에 따로 보여 준다
+    get unsure() { return unsure.slice(); },
     next() { return queue.length ? byId[queue[0]] : null; },
-    grade(grade, conf, answer) {
+    // correct = 확신으로 낮추기 전 원래 채점이 맞음(2)인지 — 새 카드는 맞혔으면 확신과 상관없이 통과
+    grade(grade, conf, answer, correct = grade === 2) {
       const id = queue.shift();
+      if (correct && conf === 0 && !unsure.includes(id)) unsure.push(id);
       answered++;
       const cs = state.cards[id] || { box: 0 };
       state.log.push({ id, t: now(), grade, conf, answer: answer || undefined });
@@ -144,7 +155,7 @@ function createSession(state, cards, now = () => Date.now(), shuffle = shuffleIn
         // 이번 회차에 틀렸던 기존 카드: 다시 맞혀도 상자 1·내일 점검은 그대로 둔다
         passed++;
       } else if (isNew) {
-        hits[id] = (hits[id] || 0) + (grade === 2 ? 1 : 0);
+        hits[id] = (hits[id] || 0) + (correct ? 1 : 0);
         if (hits[id] >= SCHEDULE.initialCriterion) { Object.assign(cs, nextReview({ box: 0 }, 2, now())); passed++; }
         else retry();
       } else {
@@ -157,18 +168,21 @@ function createSession(state, cards, now = () => Date.now(), shuffle = shuffleIn
   };
 }
 
-// 두 기기의 진행 상태를 합친다 — 읽음은 합집합(먼저 읽은 시각), 카드는 마지막으로 채점한(last 큰) 쪽, 기록은 (id, t) 로 중복 없이 시각순.
-// 한 기기에서 읽음을 취소한 것은 다른 기기에 읽음이 남아 있으면 다시 살아난다(합집합).
+// 두 기기의 진행 상태를 합친다 — 읽음은 항목마다 마지막으로 바꾼 쪽(읽음 시각 vs 취소 시각), 카드는 마지막으로 채점한(last 큰) 쪽, 기록은 (id, t) 로 중복 없이 시각순.
 function mergeStates(a, b) {
   const x = normalizeState(a);
   const y = normalizeState(b);
-  const read = { ...x.read };
-  for (const [k, t] of Object.entries(y.read)) read[k] = read[k] ? Math.min(read[k], t) : t;
+  const latest = (p, q) => { const o = { ...p }; for (const [k, t] of Object.entries(q)) o[k] = Math.max(o[k] || 0, t); return o; };
+  const read = latest(x.read, y.read);
+  const unread = latest(x.unread, y.unread);
+  for (const k of Object.keys(unread)) {
+    if (read[k] && read[k] > unread[k]) delete unread[k]; else delete read[k];
+  }
   const cards = { ...x.cards };
   for (const [k, c] of Object.entries(y.cards)) if (!cards[k] || (c.last || 0) > (cards[k].last || 0)) cards[k] = c;
   const seen = new Set();
   const log = [...x.log, ...y.log].filter((l) => { const key = `${l.id}|${l.t}`; if (seen.has(key)) return false; seen.add(key); return true; }).sort((p, q) => p.t - q.t);
-  return { read, cards, log };
+  return { read, unread, cards, log };
 }
 
 // 맞혔지만 확신이 없으면 부분으로 본다(운으로 맞힌 답은 일찍 다시 본다)
@@ -214,5 +228,5 @@ function shuffleInPlace(a) {
 }
 
 if (typeof module !== "undefined") {
-  module.exports = { SCHEDULE, DAY, STORE_PREFIX, STAGE_LABEL, todayStart, emptyState, normalizeState, nextReview, cardStatus, allItems, itemStage, chapterStage, reviewQueue, topicProgress, createSession, mergeStates, adjustGrade, feedbackSummary };
+  module.exports = { SCHEDULE, DAY, STORE_PREFIX, STAGE_LABEL, todayStart, emptyState, normalizeState, nextReview, cardStatus, allItems, itemStage, chapterStage, reviewQueue, topicProgress, createSession, setRead, mergeStates, adjustGrade, feedbackSummary };
 }

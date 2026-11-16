@@ -67,10 +67,31 @@ cases.push(["두 기기 상태 합치기: 읽음 합집합·카드는 마지막 
   a.cards["T01-Q01"] = { box: 1, due: 1, last: now }; b.cards["T01-Q01"] = { box: 2, due: 2, last: now + 1 };
   a.log.push({ id: "T01-Q01", t: now, grade: 2 }); b.log.push({ id: "T01-Q01", t: now, grade: 2 }, { id: "T01-Q01", t: now + 1, grade: 2 });
   const m = E.mergeStates(a, b);
-  assert.deepStrictEqual(m.read, { "T01#원리": now, "T02#원리": now });
+  assert.deepStrictEqual(m.read, { "T01#원리": now + 5, "T02#원리": now });
   assert.strictEqual(m.cards["T01-Q01"].box, 2);
   assert.strictEqual(m.log.length, 2);
   assert.deepStrictEqual(E.mergeStates(m, m), m);
+}]);
+cases.push(["읽음 취소가 다른 기기의 옛 읽음보다 나중이면 합쳐도 취소 유지, 다시 읽으면 읽음", () => {
+  const a = E.emptyState(); const b = E.emptyState();
+  E.setRead(a, "T01#원리", true, now); E.setRead(b, "T01#원리", true, now);
+  E.setRead(a, "T01#원리", false, now + 10);
+  let m = E.mergeStates(a, b);
+  assert.strictEqual(m.read["T01#원리"], undefined);
+  assert.strictEqual(E.mergeStates(b, a).read["T01#원리"], undefined);
+  E.setRead(b, "T01#원리", true, now + 20);
+  m = E.mergeStates(m, b);
+  assert.strictEqual(m.read["T01#원리"], now + 20);
+  assert.strictEqual(m.unread["T01#원리"], undefined);
+  assert.deepStrictEqual(E.mergeStates(m, m), m);
+}]);
+cases.push(["새 카드 정답 + 모름 = 통과, 확신 없이 맞힘으로 표시", () => {
+  const s = E.emptyState(); s.read["T02#원리"] = now;
+  const sess = E.createSession(s, [ch("T02").cards[0]], () => now, noShuffle);
+  sess.grade(E.adjustGrade(2, 0), 0, "답", true);
+  assert.strictEqual(sess.next(), null);
+  assert.deepStrictEqual([sess.passed, sess.failed.length, sess.unsure], [1, 0, ["T02-Q01"]]);
+  assert.strictEqual(E.cardStatus(s, "T02-Q01", now), "later");
 }]);
 cases.push(["다음 날 재점검 대상으로 나오고, 모두 상자 4 이상이면 숙달", () => {
   const s = E.emptyState(); s.read["T02#원리"] = now;
