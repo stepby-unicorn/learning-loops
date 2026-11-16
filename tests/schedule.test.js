@@ -1,6 +1,6 @@
 // node tests/schedule.test.js — 재점검 일정 규칙 확인
 const assert = require("node:assert");
-const { SCHEDULE, nextReview, todayStart, DAY } = require("../assets/app.js");
+const { SCHEDULE, nextReview, todayStart, DAY } = require("../assets/engine.js");
 const now = new Date(2026, 10, 16, 9, 0).getTime();
 const t0 = todayStart(now);
 const days = (r) => Math.round((r.due - t0) / DAY);

@@ -1,0 +1,4307 @@
+{
+ "id": "account-auth",
+ "key": "AUT",
+ "title": "계정·인증 학습·구현",
+ "summary": "",
+ "chapters": [
+  {
+   "id": "AUT01",
+   "title": "AUT01 식별·인증·인가와 용어 지도",
+   "part": "1부 개론 — 용어와 기초",
+   "summary": "이 장은 \"누구냐(식별) → 정말 그 사람이냐(인증) → 무엇을 해도 되냐(인가) → 무엇을 했냐(기록)\" 네 단계와, 표준마다 다르게 부르는 역할 이름(IdP·RP·SP·AS·RS·OP)·결과물 이름(credential·assertion·token·session)을 한 장의 지도로 맞춘다. 결론: 계정 설계에서 가장 먼저 정할 것은 \"사람(person)·계정(account)·외부 신원(identity)·인증 수단(credential)·session·tenant 를 서로 다른 table 로 나누는가\" 이고, LP 포털·어드민은 이 여섯을 처음부터 나눠 두면 R01(사람 단위 계정)과 나중의 여러 회사 소속·외부 IdP 추가를 같은 모델로 받는다.",
+   "items": [
+    {
+     "id": "AUT01#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "AUT01#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "AUT01#원리",
+     "title": "원리"
+    },
+    {
+     "id": "AUT01#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "AUT01#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "AUT01#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "AUT01#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "AUT01#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "AUT01#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "AUT01#LP 포털·어드민 적용",
+     "title": "적용 사례 — B2B 포털·어드민"
+    },
+    {
+     "id": "AUT01#다른 장 연결",
+     "title": "다른 장 연결"
+    },
+    {
+     "id": "AUT01#더 깊이",
+     "title": "더 깊이"
+    }
+   ],
+   "cards": [
+    {
+     "id": "AUT01-Q01",
+     "q": "식별과 인증은 무엇이 다른가? RFC 4949 는 둘을 어떻게 묶나?",
+     "a": "식별은 \"누구라고 주장\" 하는 단계(식별자 제시), 인증은 그 주장이 참임을 증거로 확인하는 단계다. RFC 4949 는 authentication 을 identification step + verification step 으로 정의해 식별을 인증의 첫 단계로 본다."
+    },
+    {
+     "id": "AUT01-Q02",
+     "q": "401 과 403 은 각각 어느 단계의 실패인가?",
+     "a": "401 = 유효한 authentication credential 이 없음(인증 실패, RFC 9110 §15.5.2). 403 = 누구인지는 알지만 허락하지 않음(인가 실패, §15.5.4). 이름 \"Unauthorized\" 는 역사적 오명이다."
+    },
+    {
+     "id": "AUT01-Q03",
+     "q": "같은 사람이 SSO 와 비밀번호 두 방법으로 들어올 때 account 가 둘로 갈라지지 않게 하려면 table 을 어떻게 나누나?",
+     "a": "account 하나에 identity(issuer, subject) row 를 여럿 연결한다. 로그인은 (issuer, subject) 로 account 를 찾고, 연결은 기존 account 로 인증한 뒤에만 한다. email 로 자동 병합하지 않는다."
+    },
+    {
+     "id": "AUT01-Q04",
+     "q": "SAML 의 SP, OIDC 의 RP, OAuth 의 client 는 같은 것인가?",
+     "a": "SAML SP 와 OIDC RP 는 \"IdP 의 assertion 을 믿고 서비스하는 쪽\" 으로 같은 자리다. OIDC 의 RP 는 OAuth client 이기도 하다. 다만 OAuth client 일반은 사람 인증 결과가 아니라 자원 접근 권한(access token)을 받는 쪽이라 개념 범위가 다르다."
+    },
+    {
+     "id": "AUT01-Q05",
+     "q": "표준의 SLO 와 사내 SSO 의 \"SLO\" 는 무엇이 다른가?",
+     "a": "표준 SLO = Single Logout(로그아웃 전파: SAML Single Logout, OIDC Front/Back-Channel Logout). 사내 SLO = Single Log On, 즉 SSO 의 자체 이름. 외부와 이야기할 때는 \"사내 SSO(자체 방식)\" 라고 불러야 오해가 없다."
+    },
+    {
+     "id": "AUT01-Q06",
+     "q": "왜 session row 에 생성 시각과 별도로 인증 시각·강도를 둬야 하나?",
+     "a": "session 이 이어지는 동안 위험한 동작 앞에서 \"최근에, 충분히 강하게 인증했나\" 를 판단해야 하기 때문이다(step-up). OIDC auth_time·acr·amr, RFC 9470 의 max_age·acr_values 가 같은 정보를 프로토콜로 나른다."
+    },
+    {
+     "id": "AUT01-Q07",
+     "q": "800-63B-4 의 AAL2 재인증 권고값은?",
+     "a": "전체 24시간 이하(SHOULD), 무활동 1시간 이하(SHOULD) — §2.2. AAL3 은 전체 12시간 이하가 SHALL, 무활동 15분 이하가 SHOULD."
+    },
+    {
+     "id": "AUT01-Q08",
+     "q": "ID token 으로 API 를 호출하면 무엇이 문제인가?",
+     "a": "ID token 의 aud 는 client 이고 목적은 \"client 에게 로그인 사실을 알림\" 이다. API 가 이를 받아들이면 다른 client 용 token 도 통과할 수 있고 scope 같은 인가 정보가 없다. API 는 자기 aud 의 access token 만 받는다."
+    },
+    {
+     "id": "AUT01-Q09",
+     "q": "공유 계정이 MFA 와 맞지 않는 이유는?",
+     "a": "MFA 의 \"가진 것\" 은 특정 사람·기기에 묶여야 하는데 공유 계정은 여러 사람이 쓰므로 묶을 대상이 없다. 결국 OTP seed 나 기기를 함께 쓰게 되어 MFA 의 의미가 사라지고, 누가 했는지 감사도 안 된다."
+    }
+   ]
+  },
+  {
+   "id": "AUT02",
+   "title": "AUT02 신원 보증 수준 — NIST SP 800-63-4",
+   "part": "1부 개론 — 용어와 기초",
+   "summary": "이 장은 \"이 서비스는 사람을 얼마나 확실히 알아봐야 하나\" 를 신원 증명(IAL)·인증(AAL)·연합(FAL) 세 축으로 나눠 정하는 법을 NIST SP 800-63-4(2025-07 최종본) 기준으로 설명하고, eIDAS·ISO/IEC 29115·한국 본인확인과 비교한다. 결론: 서비스 피해 영향(Low·Moderate·High)으로 처음 수준을 고르고, 그 결과를 session 에 acr·amr·auth_time 으로 남겨 기능별로 요구 AAL 을 검사(step-up)하는 구조로 만들면 된다. LP 포털은 IAL 없음(초대·승인으로 대신) + AAL2(피싱 저항 수단 제공), 어드민은 AAL2 피싱 저항 필수 + 민감 작업 step-up 을 추천한다.",
+   "items": [
+    {
+     "id": "AUT02#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "AUT02#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "AUT02#원리",
+     "title": "원리"
+    },
+    {
+     "id": "AUT02#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "AUT02#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "AUT02#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "AUT02#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "AUT02#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "AUT02#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "AUT02#LP 포털·어드민 적용",
+     "title": "적용 사례 — B2B 포털·어드민"
+    },
+    {
+     "id": "AUT02#다른 장 연결",
+     "title": "다른 장 연결"
+    }
+   ],
+   "cards": [
+    {
+     "id": "AUT02-Q01",
+     "q": "같은 서비스에서 IAL 없음 + AAL2 조합이 왜 말이 되나?",
+     "a": "IAL 은 가입 때 \"실제 누구인가\" 를, AAL 은 로그인 때 \"그 계정 주인이 맞나\" 를 본다. 익명 상담처럼 실명은 필요 없지만 기록이 민감하면 신원 증명 없이 강한 인증만 요구하는 게 맞다. 그래서 63-3 부터 축을 나눴다."
+    },
+    {
+     "id": "AUT02-Q02",
+     "q": "800-63-4 에서 IAL1 의 의미는 63-3 과 어떻게 달라졌나?",
+     "a": "63-3 의 IAL1 은 \"증명 없음(자기 신고)\" 이었고, -4 의 IAL1 은 증거 1개·핵심 속성 확인이 있는 실제 증명 수준이다. 증명을 안 하는 경우는 -4 에서 \"IAL 없음\" 이다."
+    },
+    {
+     "id": "AUT02-Q03",
+     "q": "AAL2 서비스가 비밀번호 + TOTP 만 제공하면 무엇이 부족한가?",
+     "a": "63B-4 §2.2.2 는 AAL2 에서 피싱 저항 수단을 적어도 하나 제공해야(SHALL offer) 한다. TOTP 는 사람이 코드를 옮겨 적으므로 피싱 저항이 아니다(§3.2.5). passkey 같은 선택지를 추가해야 한다."
+    },
+    {
+     "id": "AUT02-Q04",
+     "q": "동기화 passkey 는 어느 AAL 까지 쓸 수 있고 왜 그런가?",
+     "a": "AAL2 까지(부록 B 조건 — 로컬 키 연산, sync fabric 은 AAL2 MFA 로 보호, UV 검사 등). AAL3 는 non-exportable 키가 필요한데 동기화는 키를 export 하므로 쓸 수 없다(§2.3.2)."
+    },
+    {
+     "id": "AUT02-Q05",
+     "q": "63B-4 의 AAL2 재인증 시간 권고값은?",
+     "a": "전체 24시간 이하, 무활동 1시간 이하(둘 다 SHOULD, §2.2.3). AAL3 는 전체 12시간 이하(SHALL)·무활동 15분 이하(SHOULD), AAL1 은 전체 30일 이하(SHOULD)."
+    },
+    {
+     "id": "AUT02-Q06",
+     "q": "RP 가 IdP 의 ID token 에서 amr: [\"mfa\"] 만 보고 AAL2 피싱 저항이라 판정하면 무엇이 문제인가?",
+     "a": "mfa 는 요소 개수만 말하고 수단이 SMS·OTP 인지 passkey 인지 모른다. 피싱 저항 여부는 합의된 acr 값이나 authenticator 속성으로 따로 확인해야 한다. 또 silent renew 로 받은 token 에는 amr 가 빠질 수 있다."
+    },
+    {
+     "id": "AUT02-Q07",
+     "q": "FAL2 와 FAL3 의 핵심 차이는?",
+     "a": "FAL2 는 bearer assertion 이지만 RP 시작·한 RP 전용·주입 방지가 필수다. FAL3 는 여기에 더해 RP 가 사용자의 authenticator 소유를 직접 확인한다(holder-of-key 또는 bound authenticator) — IdP 가 뚫려도 막는다."
+    },
+    {
+     "id": "AUT02-Q08",
+     "q": "MFA 를 넣고도 실제 보증이 AAL1 로 떨어지는 대표 경로는?",
+     "a": "계정 복구. 이메일 링크 하나로 MFA 를 초기화하면 공격자는 이메일만 뚫으면 된다. 63B-4 §4.2 는 AAL2 복구에 복구 코드 2개, 복구 코드 + 묶인 authenticator, 또는 재증명을 요구한다."
+    },
+    {
+     "id": "AUT02-Q09",
+     "q": "eIDAS LoA 와 NIST xAL 의 구조 차이는?",
+     "a": "eIDAS 는 신원 증명·수단 관리·인증·조직 관리를 묶어 low·substantial·high 한 수준으로 판정하고, NIST 는 IAL·AAL·FAL 을 따로 고른다. 공식 1:1 대응표는 없다."
+    }
+   ]
+  },
+  {
+   "id": "AUT03",
+   "title": "AUT03 인증을 받치는 암호·웹 기초",
+   "part": "1부 개론 — 용어와 기초",
+   "summary": "인증 기능이 기대는 암호 도구(hash·HMAC·대칭 AEAD·전자서명·KDF·CSPRNG·상수 시간 비교)와 웹 기초(HTTP 무상태성, Authorization·WWW-Authenticate header, Basic·Digest·Bearer·cookie session, 401 vs 403, same-origin policy, TLS 가 주는 것과 못 주는 것)를 한 장에 정리한다. 결론: 브라우저 사용자는 TLS 위의 __Host- HttpOnly cookie session, 기계 호출은 TLS 위의 Bearer(가능하면 DPoP·mTLS 로 묶음)를 쓰고, 비밀은 CSPRNG 로 128비트 이상 만들어 상수 시간으로 비교하며, 서명 키는 용도별로 나눠 KMS 에 둔다. 정할 것 없음.",
+   "items": [
+    {
+     "id": "AUT03#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "AUT03#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "AUT03#원리",
+     "title": "원리"
+    },
+    {
+     "id": "AUT03#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "AUT03#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "AUT03#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "AUT03#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "AUT03#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "AUT03#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "AUT03#LP 포털·어드민 적용",
+     "title": "적용 사례 — B2B 포털·어드민"
+    },
+    {
+     "id": "AUT03#다른 장 연결",
+     "title": "다른 장 연결"
+    },
+    {
+     "id": "AUT03#더 깊이",
+     "title": "더 깊이"
+    }
+   ],
+   "cards": [
+    {
+     "id": "AUT03-Q01",
+     "q": "128비트 무작위 API key 는 SHA-256 으로 저장해도 되는데, 비밀번호는 왜 안 되나?",
+     "a": "API key 는 엔트로피가 커서 2^128 번 시도해야 하므로 hash 속도가 문제 되지 않는다. 비밀번호는 사람이 고른 낮은 엔트로피 값이라 빠른 hash 면 GPU 사전 공격으로 금방 찾힌다. 그래서 비밀번호는 salt + 느린 KDF(Argon2id 등)."
+    },
+    {
+     "id": "AUT03-Q02",
+     "q": "SHA256(secret + message) 를 서명으로 쓰면 무엇이 문제인가?",
+     "a": "length extension: 공격자가 secret 을 몰라도 그 hash 값에서 이어서 계산해 message || padding || extra 의 유효한 값을 만들 수 있다. HMAC 은 이중 hash 구조로 이것을 막는다."
+    },
+    {
+     "id": "AUT03-Q03",
+     "q": "401 과 403 을 가르는 기준은? 로그인한 사용자에게 403 이 보이면 무엇부터 확인하나?",
+     "a": "401 = 유효한 인증 정보가 없음(WWW-Authenticate 필수), 403 = 인증 정보는 있으나(또는 상관없이) 허용 안 함. 403 이면 먼저 누가 냈는지(앞단 프록시·WAF·앱) — 없는 경로에도 같은 403·같은 body 면 앱에 닿지 않은 것이다."
+    },
+    {
+     "id": "AUT03-Q04",
+     "q": "브라우저에서는 되는데 curl 로는 401 인 이유와, 해결할 때 주의할 점은?",
+     "a": "HTTP 는 무상태라 로그인 상태는 cookie 로만 전달되고, curl 은 브라우저 cookie 를 갖고 있지 않다. -b 로 cookie 를 붙이면 되지만 cookie 값은 비밀번호와 같으므로 기록·공유하지 않는다. 기계 호출은 원래 API key·Bearer 경로를 쓰는 것이 맞다."
+    },
+    {
+     "id": "AUT03-Q05",
+     "q": "HMAC 서명 대신 RSA·ECDSA 서명을 써야 하는 때는?",
+     "a": "검증자가 발급자와 다를 때(외부 RP, 여러 마이크로서비스). HMAC 은 검증자도 같은 비밀을 가져야 해서 검증자 하나가 뚫리면 위조가 가능해진다. 공개 키 서명은 검증자에게 공개 키만 주면 된다."
+    },
+    {
+     "id": "AUT03-Q06",
+     "q": "TLS 를 쓰는데도 Bearer token 탈취가 문제 되는 이유는?",
+     "a": "TLS 는 길 위만 지킨다. token 은 XSS·로그·브라우저 저장소·TLS 종료 뒤 구간·클라이언트 기기에서 샐 수 있고, 새면 그대로 replay 된다. 그래서 짧은 수명과 DPoP·mTLS 바인딩."
+    },
+    {
+     "id": "AUT03-Q07",
+     "q": "SameSite=Lax 가 있는데 CSRF token 이 여전히 필요한 경우는?",
+     "a": "same-site 인 다른 하위 도메인에서 오는 공격(SameSite 는 site 기준이라 막지 않음), GET 으로 상태를 바꾸는 endpoint, 브라우저 예외(SameSite 를 지정하지 않은 cookie 에 Chrome 이 둔 \"Lax + POST\" — 만든 지 2분 이내면 cross-site top-level POST 에도 보냄, [Chromium SameSite 업데이트](https://www.chromium.org/updates/same-site/); 6265bis §5.6.7.2 \"Lax-allowing-unsafe\"). 그래서 CSRF token 또는 Origin 검사를 함께 둔다."
+    },
+    {
+     "id": "AUT03-Q08",
+     "q": "리버스 프록시 뒤 앱에서 로그인 직후 다시 로그인 화면으로 돌아가는 원인 후보 세 가지는?",
+     "a": "① 앱이 X-Forwarded-Proto 를 몰라 Secure cookie 를 안 붙이거나 http 로 redirect ② 프록시가 경로 접두사를 떼서 cookie Path 가 어긋남 ③ Host 가 내부 이름으로 바뀌어 Domain 이 틀어짐. (그 밖에 프록시가 Set-Cookie 를 지우거나 캐시, session 저장소 연결 실패.)"
+    },
+    {
+     "id": "AUT03-Q09",
+     "q": "Digest 인증이 Basic 보다 낫다고 하는데도 새 서비스에 쓰지 않는 이유는?",
+     "a": "서버가 저장하는 H(A1) 가 사실상 평문 비밀번호라 느린 hash 로 저장할 수 없고, downgrade MITM·사전 공격에 약하며, 서버를 인증하지 못하고, MFA·잠금 같은 현대 로그인 UX 를 담지 못한다(RFC 7616 §5)."
+    },
+    {
+     "id": "AUT03-Q10",
+     "q": "ECDSA 서명에서 nonce 가 새면 왜 개인 키까지 잃나? 피하는 법은?",
+     "a": "서명 식 s = k⁻¹(H(m) + r·d) 에서 k 를 알거나 두 서명이 같은 k 를 쓰면 d(개인 키)를 풀 수 있다. RFC 6979 결정적 nonce, Ed25519, 또는 검증된 라이브러리·KMS 를 쓴다."
+    }
+   ]
+  },
+  {
+   "id": "AUT04",
+   "title": "AUT04 비밀번호 정책",
+   "part": "2부 방법론 — 실무 핵심",
+   "summary": "이 장은 \"사용자가 어떤 비밀번호를 정할 수 있게 할 것인가\"(길이·구성·변경 주기·금지 목록·유출 확인·입력 UX)에 답한다. 결론은 NIST SP 800-63B-4(2025-07)·OWASP ASVS 5.0 이 모두 가리키는 길이 기준 + blocklist + 유출 비밀번호 대조(k-anonymity) + 구성 규칙·주기 변경 금지이고, 강도 추정(zxcvbn)은 화면 안내용으로 얹는다. 국내 「개인정보의 안전성 확보조치 기준」 쪽 조합 규칙과 부딪치는 지점은 표로 나눠 두었고 LP 포털에서 무엇을 고를지는 「LP 포털·어드민 적용」 절에 있다.",
+   "items": [
+    {
+     "id": "AUT04#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "AUT04#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "AUT04#원리",
+     "title": "원리"
+    },
+    {
+     "id": "AUT04#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "AUT04#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "AUT04#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "AUT04#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "AUT04#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "AUT04#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "AUT04#LP 포털·어드민 적용",
+     "title": "적용 사례 — B2B 포털·어드민"
+    },
+    {
+     "id": "AUT04#다른 장 연결",
+     "title": "다른 장 연결"
+    }
+   ],
+   "cards": [
+    {
+     "id": "AUT04-Q01",
+     "q": "NIST SP 800-63B-4 에서 최소 길이가 15자와 8자로 갈리는 조건은?",
+     "a": "비밀번호가 단일 요소 인증에 쓰이면 15자 이상(SHALL), MFA 의 한 요소로만 쓰이면 8자 이상(SHALL)이다(§3.1.1.2). 63B-3 은 둘 구분 없이 8자였다."
+    },
+    {
+     "id": "AUT04-Q02",
+     "q": "구성 규칙과 주기 변경은 63B-3 → 63B-4 에서 어떻게 바뀌었나?",
+     "a": "둘 다 SHOULD NOT 에서 SHALL NOT 으로 강화됐다. 주기 변경 대신 유출 근거가 있으면 강제 변경 SHALL."
+    },
+    {
+     "id": "AUT04-Q03",
+     "q": "HIBP range API 에 무엇을 보내고 무엇을 받나? Add-Padding 은 왜 쓰나?",
+     "a": "비밀번호 SHA-1 의 앞 5자리 hex 를 보내고, 그 prefix 로 시작하는 모든 hash 의 suffix 35자와 출현 횟수 목록을 받아 클라이언트가 비교한다. Add-Padding 은 응답을 800~1,000개로 무작위로 채워 응답 크기로 어떤 bucket 인지·결과를 추측하지 못하게 한다(padding 항목은 count 0)."
+    },
+    {
+     "id": "AUT04-Q04",
+     "q": "blocklist 를 무한히 키우면 안 되는 이유와, 그런데도 HIBP 전체 대조를 하는 이유는?",
+     "a": "blocklist 는 rate limit 으로 제한된 온라인 추측을 막는 장치라 그 한도 안에서 맞힐 값만 막으면 되고 더 키운 이득은 작다(NIST §3.1.1.2). HIBP 전체 대조는 \"흔한 값\" 이 아니라 \"다른 곳에서 이미 유출된 값\" 을 쓰는 credential stuffing 을 막는 별개 목적이다."
+    },
+    {
+     "id": "AUT04-Q05",
+     "q": "JavaScript 에서 \"😀abc\".length 로 최소 길이를 재면 무엇이 틀리나?",
+     "a": "UTF-16 code unit 을 세서 이모지가 2로 계산된다(결과 5). NIST 는 code point 하나를 1자로 세라고 하므로 [...\"😀abc\"].length = 4 로 세야 하고, 서버·브라우저가 같은 방식이어야 한다."
+    },
+    {
+     "id": "AUT04-Q06",
+     "q": "NIST 63B-4 와 ASVS 5.0 이 갈리는 지점 하나는?",
+     "a": "오타 허용 — NIST 는 앞뒤 공백 제거·첫 글자 대소문자 차이 허용을 MAY 로 두지만, ASVS 5.0 6.2.8 은 입력 그대로(잘라내기·대소문자 변경 없이) 검증하라고 한다. 또 ASVS 6.2.1 최소 길이는 8자(15자 권장)로 NIST 의 단일 요소 15자보다 느슨하다."
+    },
+    {
+     "id": "AUT04-Q07",
+     "q": "유출 대조 서비스가 장애일 때 가입을 막아야 하나?",
+     "a": "정책 선택이다. 막으면(fail-closed) 가용성을 잃고, 통과시키면(fail-open) 그 사이 유출값이 들어올 수 있다. 이 장 기본안은 통과시키되 breach_checked_at 을 비워 다음 로그인 때 재확인하는 것."
+    },
+    {
+     "id": "AUT04-Q08",
+     "q": "zxcvbn 점수만으로 정책을 대신하면 생기는 빈틈은?",
+     "a": "사전에 없는 유출값(다른 사이트 유출 데이터에 있는 무작위처럼 보이는 값)은 높은 점수를 받아 credential stuffing 을 못 막는다. 또 한국어 사전이 없으면 한글 자판 영문 입력 패턴을 과대평가할 수 있다. 그래서 유출 대조를 서버 거절 기준으로 함께 둔다."
+    },
+    {
+     "id": "AUT04-Q09",
+     "q": "국내 고시·해설서가 문자 조합을 요구한다면 NIST 와 어떻게 함께 만족하나?",
+     "a": "길이를 국내 숫자보다 길게 잡고, 조합 요구가 법적 의무로 확인될 때만 최소 요구(예: 2종)를 넣되 blocklist·유출 대조를 반드시 함께 둔다. 의무 여부·현행 조문은 법무 확인 항목이다."
+    }
+   ]
+  },
+  {
+   "id": "AUT05",
+   "title": "AUT05 비밀번호 저장과 hash",
+   "part": "2부 방법론 — 실무 핵심",
+   "summary": "서버가 비밀번호를 어떤 형태로 저장해야 DB 가 통째로 새도 원문이 바로 드러나지 않는지, 알고리즘·parameter·pepper·이전(migration)을 어떻게 고르는지 답한다. 결론: 새 시스템은 Argon2id(OWASP 최소값 m=19 MiB·t=2·p=1 이상)를 PHC string 으로 저장하고 로그인 때 needsRehash 로 올려 가며, FIPS 가 필요하면 PBKDF2-HMAC-SHA256(600,000회)를 쓴다. API key·초대 token 처럼 서버가 만든 고엔트로피 무작위 값은 SHA-256 hash 로 충분하다.",
+   "items": [
+    {
+     "id": "AUT05#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "AUT05#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "AUT05#원리",
+     "title": "원리"
+    },
+    {
+     "id": "AUT05#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "AUT05#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "AUT05#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "AUT05#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "AUT05#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "AUT05#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "AUT05#LP 포털·어드민 적용",
+     "title": "적용 사례 — B2B 포털·어드민"
+    },
+    {
+     "id": "AUT05#다른 장 연결",
+     "title": "다른 장 연결"
+    },
+    {
+     "id": "AUT05#더 깊이",
+     "title": "더 깊이"
+    }
+   ],
+   "cards": [
+    {
+     "id": "AUT05-Q01",
+     "q": "비밀번호에 salt 를 붙인 SHA-256 은 왜 부족한가?",
+     "a": "salt 는 rainbow table 과 \"여러 사용자 동시 대입\" 만 막는다. SHA-256 은 GPU 1장에서 초당 약 2×10^10 번 계산되므로 사람이 고른 비밀번호(사전 10^9 개 수준)는 사용자 한 명당 1초 안에 대입된다. 느린 password hash 가 필요하다."
+    },
+    {
+     "id": "AUT05-Q02",
+     "q": "그런데 API key 는 왜 SHA-256 만으로 괜찮은가?",
+     "a": "서버가 CSPRNG 로 만든 256비트 무작위 값이라 후보가 2^256 개다. hash 가 빨라도 대입이 끝나지 않는다. 매 request 검증·index 조회가 필요해 오히려 빠른 hash 가 맞다."
+    },
+    {
+     "id": "AUT05-Q03",
+     "q": "bcrypt 72 byte 한도는 NIST SP 800-63B-4 의 어떤 요구와 부딪치나?",
+     "a": "§3.1.1.2 의 \"제출한 비밀번호 전체를 검증 SHALL(잘라내지 말 것)\" 과 \"최대 길이 64자 이상 허용 SHOULD\". UTF-8 한글은 글자당 3 byte 라 24자에서 한도에 닿는다."
+    },
+    {
+     "id": "AUT05-Q04",
+     "q": "pepper 를 HMAC 으로 넣을 때와 암호화로 감쌀 때 운영상 가장 큰 차이는?",
+     "a": "회전. HMAC 은 되돌릴 수 없어 pepper 를 바꾸려면 원문(다음 로그인)이나 전원 재설정이 필요하다. 암호화 wrap 은 옛 key 로 풀고 새 key 로 다시 싸는 배치로 원문 없이 회전할 수 있다."
+    },
+    {
+     "id": "AUT05-Q05",
+     "q": "레거시 MD5 hash 를 즉시 보호하면서 원문 없이 옮기는 방법과 그 약점은?",
+     "a": "Argon2id(md5(pw)) 로 감싸고 옛 값을 지운 뒤 로그인 때 직접 hash 로 바꾼다. 약점은 password shucking — 다른 곳 유출 목록의 md5 값을 그대로 넣어 볼 수 있다. 안쪽에 pepper HMAC 을 넣으면 완화."
+    },
+    {
+     "id": "AUT05-Q06",
+     "q": "계정이 없는 이메일로 로그인할 때도 hash 를 돌려야 하는 이유는?",
+     "a": "안 돌리면 response 시간이 짧아 그 이메일이 가입돼 있지 않다는 것이 드러난다(계정 열거). dummy hash 로 같은 비용을 치른다."
+    },
+    {
+     "id": "AUT05-Q07",
+     "q": "Argon2id parameter 를 고를 때 RFC 9106 과 OWASP 권고가 다른 이유는?",
+     "a": "RFC 9106 §4 는 일반 KDF 관점에서 memory 여유가 있으면 2 GiB(t=1) 를 1순위로 둔다. OWASP 는 동시 요청이 많은 웹 로그인 서버 관점에서 19 MiB·t=2 같은 최소값 다섯 개를 준다. 실무는 운영 사양에서 측정해 OWASP 최소 이상, memory 한도 이하로 정한다."
+    },
+    {
+     "id": "AUT05-Q08",
+     "q": "Cognito 로 이전할 때 비밀번호를 유지하려면 무엇이 필요한가?",
+     "a": "두 길이 있다. (1) CSV import job 에 hash 알고리즘을 지정하고 password_hash column 을 넣는다 — bcrypt·scrypt·Argon2id·PBKDF2-SHA256 만, 그리고 parameter 상한(Argon2id m ≤ 19456·t ≤ 2·p=1 등) 안이어야 한다. (2) 상한을 넘거나 지원하지 않는 형식이면 사용자 이전 Lambda trigger 로 첫 로그인 때 옛 DB 의 hash 로 검증하고 Cognito 에 생성한다 — 이전 기간 동안 옛 hash 저장소와 검증 코드를 유지해야 한다."
+    }
+   ]
+  },
+  {
+   "id": "AUT06",
+   "title": "AUT06 비밀번호 없는 로그인 — magic link·OTP",
+   "part": "2부 방법론 — 실무 핵심",
+   "summary": "이 장은 비밀번호 대신 \"메일·문자로 보낸 1회용 비밀\"로 로그인하는 방법(email magic link · email OTP · SMS OTP 와 그 변형)이 어떻게 동작하고, 어디까지 안전하며, 직접 만들 때 무엇을 지켜야 하는지 답한다. 핵심 결론: 이 방법들은 모두 \"메일함·전화번호를 가진 사람 = 본인\" 이라는 가정 위에 서 있어 phishing-resistant 가 아니고 NIST SP 800-63B-4 는 email 을 out-of-band 인증 수단으로 쓰지 말라고 한다(SHALL NOT) — 그래서 LP 포털에서는 1회용 링크를 로그인 수단이 아니라 초대·비밀번호 재설정(R04~R06)의 \"계정 주인 확인\" 단계로 쓰고, 그 설계(256bit 무작위 token · hash 저장 · 짧은 만료 · 원자적 1회 사용 · 메일 스캐너를 견디는 확인 화면)를 이 장의 구현 기준으로 삼는다.",
+   "items": [
+    {
+     "id": "AUT06#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "AUT06#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "AUT06#원리",
+     "title": "원리"
+    },
+    {
+     "id": "AUT06#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "AUT06#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "AUT06#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "AUT06#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "AUT06#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "AUT06#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "AUT06#LP 포털·어드민 적용",
+     "title": "적용 사례 — B2B 포털·어드민"
+    },
+    {
+     "id": "AUT06#다른 장 연결",
+     "title": "다른 장 연결"
+    }
+   ],
+   "cards": [
+    {
+     "id": "AUT06-Q01",
+     "q": "magic link 의 token 은 DB 에 SHA-256 으로만 저장해도 되는데, 비밀번호는 왜 bcrypt·Argon2 같은 느린 hash 가 필요한가?",
+     "a": "token 은 CSPRNG 256bit 라 hash 를 알아도 원문을 찾으려면 2^256 번 시도해야 해서 hash 가 빠르든 느리든 상관없다. 비밀번호는 사람이 고른 낮은 엔트로피 값이라 사전 공격으로 빠르게 맞힐 수 있어 시도 하나하나를 느리게 만들어야 한다. 반대로 6자리 OTP 는 엔트로피가 더 낮으므로 hash 만으로는 부족하고 DB 밖 pepper 를 쓴 HMAC 이 필요하다."
+    },
+    {
+     "id": "AUT06-Q02",
+     "q": "링크를 여는 GET 에서 token 을 소비하면 어떤 문제가 생기고, 어떻게 고치나?",
+     "a": "회사 메일 보안 스캐너(예: Safe Links)나 메신저 링크 미리보기가 사용자보다 먼저 URL 을 열어 token 을 소비해, 사용자가 누를 때 \"만료됨\" 이 된다. RFC 9110 의 safe method 원칙대로 GET 은 확인 화면만 보여 주고, 사용자가 버튼을 눌러 보내는 POST 에서 원자적으로 소비한다."
+    },
+    {
+     "id": "AUT06-Q03",
+     "q": "NIST SP 800-63B-4 는 email 에 대해 무엇을 금지하고 무엇을 허용하나?",
+     "a": "§3.1.3.1 에서 email 을 out-of-band 인증에 쓰는 것을 금지(SHALL NOT)한다. 같은 절 주석과 §4.2.2 에서 이메일 주소 확인 코드와 계정 복구 코드 전달은 인증이 아니므로 허용하고, email 로 보낸 복구 코드는 24시간 안에 써야 한다."
+    },
+    {
+     "id": "AUT06-Q04",
+     "q": "email OTP 는 magic link 보다 무엇에 강하고 무엇에 약한가?",
+     "a": "강한 점: 요청한 화면에 입력하므로 기기 불일치·스캐너 사전 소비·인앱 브라우저 문제가 없다. 약한 점: 엔트로피가 낮아 시도 횟수 제한에 전적으로 기대고, 가짜 화면이 코드를 받아 즉시 진짜 서비스에 넣는 실시간 중계 피싱에 약하다(수동 입력은 session 에 묶이지 않음 — NIST §3.2.5)."
+    },
+    {
+     "id": "AUT06-Q05",
+     "q": "코드 재발송 때 실패 횟수를 초기화하면 왜 안 되나?",
+     "a": "공격자가 \"5회 틀리기 → 재발송 → 5회 틀리기\" 를 반복하면 사실상 무제한으로 추측할 수 있다. NIST §3.1.3.2 는 새 비밀 발급이 실패 횟수를 초기화하지 않아야 한다고(SHALL NOT) 적었다. 그래서 실패 누계를 token row 가 아니라 email·계정 단위로 따로 센다."
+    },
+    {
+     "id": "AUT06-Q06",
+     "q": "cross-device 승인 링크의 핵심 위험은 무엇이고 어떻게 줄이나?",
+     "a": "공격자가 피해자 이메일로 로그인을 시작하고 피해자가 메일의 \"승인\" 을 누르면 session 이 공격자 기기에 생긴다(RFC 8628 §5.4 의 원격 피싱과 같은 구조). 승인 화면에 요청 기기·시각·대략 위치를 보여 주고 \"직접 요청하지 않았다면 누르지 말 것\" 경고, 짧은 만료로 줄인다."
+    },
+    {
+     "id": "AUT06-Q07",
+     "q": "LP 포털이 magic link 를 로그인 수단이 아니라 초대·재설정에만 쓰는 근거 세 가지는?",
+     "a": "(1) NIST 63B-4 가 email 을 인증 수단에서 빼고 복구 용도만 허용, (2) OWASP ASVS 5.0 6.3.6 이 email 인증을 L3 에서 금지, (3) 금융권 고객 메일의 스캐너 사전 방문으로 magic link 로그인의 UX 장점이 줄어듦. 덤으로 같은 1회용 token 서비스 하나로 초대·재설정·이메일 확인을 모두 처리한다."
+    },
+    {
+     "id": "AUT06-Q08",
+     "q": "SMS OTP 를 꼭 써야 한다면 NIST 63B-4 가 요구하는 조건은?",
+     "a": "PSTN 은 restricted authenticator 라 restricted 가 아닌 대안을 최소 하나 제공해야 하고(SHALL), 사용자에게 위험을 알리고, 위험 평가와 이전 계획을 세워야 한다. SIM 변경·번호 이동 같은 위험 신호를 고려해야 하며(SHOULD), 전화번호 등록·변경은 새 authenticator 등록으로 다뤄야 한다(§3.1.3.3, §3.2.9)."
+    }
+   ]
+  },
+  {
+   "id": "AUT07",
+   "title": "AUT07 서버 session 관리",
+   "part": "2부 방법론 — 실무 핵심",
+   "summary": "로그인한 사람을 다음 request 에서도 알아보는 가장 오래되고 단단한 방법인 서버 session 을 session id 생성·cookie 속성·저장소·만료·회전·강제 폐기·분산 환경·다른 서비스의 session 확인까지 다룬다. 결론: B2B 포털·어드민은 \"256bit 무작위 session id 를 __Host- cookie(Secure·HttpOnly·SameSite=Lax)에 담고, 서버는 id 의 hash 로 Redis(또는 RDB)에 저장, idle + absolute timeout 두 개를 서버에서 강제, 로그인·권한 변경 때 id 회전, 사용자 비활성화 때 revokeAllForUser\" 가 기본값이다. 서명 cookie(stateless session)는 즉시 폐기가 안 되므로 어드민에는 고르지 않는다.",
+   "items": [
+    {
+     "id": "AUT07#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "AUT07#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "AUT07#원리",
+     "title": "원리"
+    },
+    {
+     "id": "AUT07#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "AUT07#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "AUT07#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "AUT07#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "AUT07#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "AUT07#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "AUT07#LP 포털·어드민 적용",
+     "title": "적용 사례 — B2B 포털·어드민"
+    },
+    {
+     "id": "AUT07#다른 장 연결",
+     "title": "다른 장 연결"
+    },
+    {
+     "id": "AUT07#더 깊이",
+     "title": "더 깊이"
+    }
+   ],
+   "cards": [
+    {
+     "id": "AUT07-Q01",
+     "q": "session id 엔트로피 최소값은 문서마다 어떻게 다르고, 이 장은 왜 256bit 를 쓰나?",
+     "a": "OWASP SM CS·NIST 800-63B-4 §5.1 은 최소 64bit, ASVS 5.0 7.2.3 은 reference token 128bit. 256bit 는 비용 차이가 없고 SHA-256 저장 key 와 길이가 맞아서 고른 내 기준이다."
+    },
+    {
+     "id": "AUT07-Q02",
+     "q": "session id 를 저장소에 hash 로 두면 무엇을 막고, 왜 Argon2 같은 느린 hash 는 필요 없나?",
+     "a": "저장소 유출만으로 cookie 를 만들어 남의 session 에 들어가는 것을 막는다. id 가 256bit 무작위라 무차별 대입이 불가능하므로 느린 hash 가 줄 추가 이득이 없다(비밀번호는 엔트로피가 낮아 느린 hash 가 필요)."
+    },
+    {
+     "id": "AUT07-Q03",
+     "q": "idle timeout 만 두면 어떤 공격이 남나? NIST AAL2 의 두 숫자는?",
+     "a": "탈취한 session 을 계속 사용하면 idle 이 계속 연장돼 영원히 산다 — absolute 가 필요. AAL2: 전체 24시간 이하 SHOULD, 비활동 1시간 이하 SHOULD(800-63B-4 §2.2.3)."
+    },
+    {
+     "id": "AUT07-Q04",
+     "q": "로그인할 때 id 를 바꾸지 않으면 어떤 공격이 되나? express-session 과 Django 의 차이는?",
+     "a": "session fixation. Django login() 은 cycle_key() 를 자동으로 부르지만 express-session 은 req.session.regenerate() 를 직접 불러야 한다."
+    },
+    {
+     "id": "AUT07-Q05",
+     "q": "서명 cookie session 에서 \"강제 로그아웃\" 을 하려면 무엇이 필요하고, 그러면 무엇을 잃나?",
+     "a": "사용자별 cutoff 시각(sessions_valid_after)이나 폐기 목록을 서버에서 조회해야 한다(ASVS 7.4.1). 그 순간 저장소 조회가 생겨 \"저장소 없음\" 이라는 장점을 잃는다."
+    },
+    {
+     "id": "AUT07-Q06",
+     "q": "터미널 curl 이 401 을 받는 이유(Q04)를 session 관점에서 한 문장으로.",
+     "a": "서버 session 은 브라우저가 cookie 로 session id 를 자동으로 보내 준다는 전제인데 curl 은 cookie 를 보내지 않으므로 서버는 로그인 안 된 사용자로 판단한다."
+    },
+    {
+     "id": "AUT07-Q07",
+     "q": "앱 코드는 그대로인데 \"로그인이 자꾸 풀린다\" 면 인프라에서 무엇을 의심하나(Q06)?",
+     "a": "TLS 종료 뒤 X-Forwarded-Proto 신뢰 누락(Secure cookie 실패), 프록시의 Path·Host 재작성, 서버 여러 대인데 메모리 session + sticky 없음, session 확인 API 로 가는 네트워크 차단, Redis eviction."
+    },
+    {
+     "id": "AUT07-Q08",
+     "q": "다른 서비스가 포털의 session 확인 API 로 사용자를 아는 구조의 가장 큰 보안 약점은?",
+     "a": "서비스가 포털 session cookie 원문을 받게 되므로 그 서비스 하나가 뚫리면 포털 session 이 탈취된다. 대안은 게이트웨이 내부 token 이나 서비스별 session(OIDC)."
+    },
+    {
+     "id": "AUT07-Q09",
+     "q": "사용자를 비활성화할 때 저장소 폐기만으로 부족한 이유와 두 번째 방어선은?",
+     "a": "폐기 중 경합·저장소 일부 실패·다른 저장소(remember token)가 남을 수 있다. 매 request 에서 users.status 와 sessions_valid_after 를 확인하는 두 번째 검사로 막는다."
+    }
+   ]
+  },
+  {
+   "id": "AUT08",
+   "title": "AUT08 token 형식 — JWT·JWS·JWE·opaque·PASETO",
+   "part": "2부 방법론 — 실무 핵심",
+   "summary": "이 장은 \"token 안에 무엇을 어떤 모양으로 담고, 받는 쪽은 그것을 어떻게 믿을지\" 를 다룬다 — self-contained(JWT·PASETO·CWT)와 reference(opaque) token 의 차이, JWS·JWE·JWK 구조, JWT 취약점과 RFC 8725(+ 2026 개정 초안) 검증 규칙, macaroons·Biscuit·SD-JWT 같은 변형까지. 결론: 한 서비스 안의 브라우저 로그인은 token 이 아니라 server-side session(AUT07 서버 session 관리)이 기본이고, 서비스 사이·API 에 token 이 필요하면 짧은 수명 JWS(비대칭 서명, 알고리즘 고정, typ·iss·aud·exp 검사) 또는 즉시 폐기가 필요한 곳은 opaque + introspection 을 고른다.",
+   "items": [
+    {
+     "id": "AUT08#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "AUT08#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "AUT08#원리",
+     "title": "원리"
+    },
+    {
+     "id": "AUT08#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "AUT08#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "AUT08#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "AUT08#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "AUT08#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "AUT08#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "AUT08#더 깊이",
+     "title": "더 깊이"
+    },
+    {
+     "id": "AUT08#LP 포털·어드민 적용",
+     "title": "적용 사례 — B2B 포털·어드민"
+    },
+    {
+     "id": "AUT08#다른 장 연결",
+     "title": "다른 장 연결"
+    }
+   ],
+   "cards": [
+    {
+     "id": "AUT08-Q01",
+     "q": "JWS 로 서명한 JWT 의 payload 를 제3자가 읽을 수 있나? 막으려면?",
+     "a": "읽을 수 있다 — base64url 인코딩일 뿐 암호화가 아니다(RFC 7515). 막으려면 JWE(또는 서명 후 암호화한 Nested JWT)를 쓰거나, 처음부터 민감 정보를 넣지 않고 opaque token + 서버 조회로 바꾼다."
+    },
+    {
+     "id": "AUT08-Q02",
+     "q": "서버가 RS256 공개 키로 검증하는데 공격자가 alg: HS256 token 을 보냈다. 어떤 구현에서 통과하고, 어떻게 막나?",
+     "a": "검증 함수가 header 의 alg 를 믿고 \"키 바이트\" 를 그대로 HMAC 비밀로 쓰는 구현에서 통과한다(공개 키는 공개되어 있으므로 공격자가 같은 HMAC 을 계산). 허용 알고리즘을 [\"RS256\"] 처럼 고정하고 키 객체를 알고리즘과 묶어 둔다(RFC 8725 §3.1)."
+    },
+    {
+     "id": "AUT08-Q03",
+     "q": "JWT 의 aud 검사를 빼면 생기는 공격 이름과 예는?",
+     "a": "substitution·confused deputy. 같은 IdP 가 서비스 A 용으로 발급한 token 을 A 의 운영자(또는 탈취자)가 서비스 B 에 보내면 B 가 받아들인다(RFC 8725 §2.7·§3.9)."
+    },
+    {
+     "id": "AUT08-Q04",
+     "q": "로그아웃 즉시 token 을 무효로 해야 한다. JWT 와 opaque 중 무엇이 자연스럽고, JWT 로 하려면 무엇을 추가해야 하나?",
+     "a": "opaque 가 자연스럽다(저장소에서 지우면 끝). JWT 로 하려면 짧은 수명 + jti 폐기 목록(남은 수명 동안만 보관) 또는 session 상태 조회를 붙여야 하고, 그 순간 stateless 이점이 줄어든다(AUT09 token 수명주기와 바인딩)."
+    },
+    {
+     "id": "AUT08-Q05",
+     "q": "ID token 을 API 의 access token 으로 받아 주면 무엇이 문제이고, 무엇으로 구분하나?",
+     "a": "ID token 의 aud 는 client 이고 목적은 로그인 증명이라 API 권한 범위(scope)가 없다 — 다른 client 가 받은 ID token 으로 API 를 부를 수 있다. RFC 9068 은 access token 에 typ: at+jwt 를 MUST 로 두고 resource server 가 그 값을 확인하게 해 구분한다(§2.1·§4·§5)."
+    },
+    {
+     "id": "AUT08-Q06",
+     "q": "PASETO 가 JWT 보다 안전하다는 말은 어디까지 맞나?",
+     "a": "알고리즘 혼동·none 같은 \"형식 수준\" 함정이 구조적으로 없다는 점에서 맞다. 그러나 도난 재사용·만료 전 폐기 불가·claim 검사(aud·exp) 누락은 똑같이 생기고, IETF 표준·IdP 지원이 없어 외부 연동엔 못 쓴다."
+    },
+    {
+     "id": "AUT08-Q07",
+     "q": "macaroons 와 Biscuit 의 가장 큰 차이는?",
+     "a": "macaroons 는 HMAC 체인이라 root key 를 가진 발급자만 검증할 수 있고, Biscuit 은 블록마다 공개 키 서명을 이어 공개 키만으로 누구나 검증한다. 둘 다 받은 쪽이 권한을 좁혀(감쇠) 넘길 수 있다."
+    },
+    {
+     "id": "AUT08-Q08",
+     "q": "Q09 — 인증서 Thumbprint 를 아는 공격자가 그 앱으로 위장할 수 있나?",
+     "a": "없다. Thumbprint(x5t#S256)는 \"어느 인증서로 검증하라\" 는 이름표일 뿐이고, client assertion JWT 는 그 인증서의 개인 키로 서명해야 검증을 통과한다. 위험은 Thumbprint 노출이 아니라 개인 키 유출이다."
+    },
+    {
+     "id": "AUT08-Q09",
+     "q": "JWKS 를 kid 미스마다 다시 가져오게 짜면 무엇이 문제인가?",
+     "a": "공격자가 무작위 kid 로 request 를 쏟아내면 서버가 IdP 에 JWKS 요청을 폭주시킨다(자기·IdP DoS). cache + 재조회 최소 간격(cooldown)을 둔다."
+    },
+    {
+     "id": "AUT08-Q10",
+     "q": "EdDSA 대신 Ed25519 를 alg 로 써야 하나?",
+     "a": "RFC 9864(2025-10)가 다형 식별자 EdDSA 를 deprecated 로 두고 Ed25519 를 새로 정했으므로 새 배포는 Ed25519 가 맞다. 단 상대 라이브러리가 새 식별자를 아는지 먼저 확인하고, 모르면 과도기엔 EdDSA 를 받아 주되 키 곡선을 Ed25519 로 제한한다."
+    }
+   ]
+  },
+  {
+   "id": "AUT09",
+   "title": "AUT09 token 수명주기와 바인딩",
+   "part": "2부 방법론 — 실무 핵심",
+   "summary": "이 장은 token 이 만들어져서 쓰이고, 갱신되고, 끝나는 전체 과정(수명·refresh·rotation·폐기·introspection·로그아웃)과, 훔친 token 을 못 쓰게 묶는 방법(bearer·DPoP·mTLS)을 다룬다. 결론: access token 은 짧게(분 단위) 두고 refresh token 은 rotation + 재사용 탐지(token family 폐기)로 지키며, public client 는 RFC 9700 §2.2.2 에 따라 rotation 또는 sender-constrained 중 하나가 MUST 다. LP 포털·어드민처럼 BFF 를 두는 웹이면 token 은 서버에만 두고, 즉시 끊기는 \"짧은 수명 + family 폐기 + 계정 상태 확인\" 조합으로 충분하며 DPoP·mTLS 는 public client·서비스 간 호출이 생길 때 붙인다.",
+   "items": [
+    {
+     "id": "AUT09#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "AUT09#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "AUT09#원리",
+     "title": "원리"
+    },
+    {
+     "id": "AUT09#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "AUT09#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "AUT09#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "AUT09#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "AUT09#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "AUT09#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "AUT09#LP 포털·어드민 적용",
+     "title": "적용 사례 — B2B 포털·어드민"
+    },
+    {
+     "id": "AUT09#다른 장 연결",
+     "title": "다른 장 연결"
+    }
+   ],
+   "cards": [
+    {
+     "id": "AUT09-Q01",
+     "q": "access token 을 짧게 하고 refresh token 을 따로 두는 이유는?",
+     "a": "access token 은 모든 API request에 실려 노출 면이 크니 짧게 해서 도난 피해를 줄이고, 사용자가 자주 로그인하지 않도록 AS 에만 가는 refresh token 으로 새 access token 을 받는다(RFC 9700 §4.14)."
+    },
+    {
+     "id": "AUT09-Q02",
+     "q": "RFC 9700 이 public client 의 refresh token 에 요구하는 것은? 수준은?",
+     "a": "sender-constrained 이거나 refresh token rotation 을 써야 한다 — MUST(§2.2.2). confidential client 는 RFC 6749 의 client 바인딩으로 이미 묶여 있다."
+    },
+    {
+     "id": "AUT09-Q03",
+     "q": "rotation 에서 재사용이 탐지되면 왜 정상 사용자 token 까지 폐기하나?",
+     "a": "AS 는 옛 token 을 낸 쪽과 새 token 을 가진 쪽 중 누가 공격자인지 알 수 없다. 그래서 family 의 살아 있는 token 을 폐기하고 둘 다 다시 인증하게 한다(RFC 9700 §4.14.2)."
+    },
+    {
+     "id": "AUT09-Q04",
+     "q": "rotation 만으로 못 막는 시나리오 하나는?",
+     "a": "정상 client 가 꺼져 있는(refresh 하지 않는) 동안 공격자가 훔친 최신 refresh token 으로 rotation 을 계속 이어 가는 경우. 정상 client 가 다시 켜져 옛 token 을 낼 때까지 탐지되지 않는다 — inactivity·absolute lifetime 과 sender-constrained 가 보완한다."
+    },
+    {
+     "id": "AUT09-Q05",
+     "q": "JWT access token 을 즉시 끊는 방법 세 가지와 대가는?",
+     "a": "① deny list(jti·사용자별 tokens_valid_after) — 공유 저장소 필요 ② opaque 로 바꾸고 introspection — AS 부하·가용성 ③ 수명을 아주 짧게 — refresh 횟수 증가. 어느 것이든 \"RS 무상태\" 를 일부 포기한다."
+    },
+    {
+     "id": "AUT09-Q06",
+     "q": "DPoP 는 XSS 를 막나?",
+     "a": "못 막는다. XSS 코드는 client 안에서 키로 proof 를 만들 수 있다(RFC 9449 §11.4). DPoP 가 막는 것은 token 을 빼 가서 다른 곳에서 쓰는 것이다."
+    },
+    {
+     "id": "AUT09-Q07",
+     "q": "mTLS 바인딩에서 cnf 에 들어가는 값과 그 값의 비밀성은?",
+     "a": "클라이언트 인증서의 SHA-256 thumbprint(x5t#S256, RFC 8705 §3.1). 공개 값이고 비밀이 아니다. 안전은 인증서 비공개 키가 지킨다(Q09)."
+    },
+    {
+     "id": "AUT09-Q08",
+     "q": "RFC 7009 revocation endpoint 가 무효한 token 에도 200 을 주는 이유는?",
+     "a": "client 는 어차피 그 token 을 버리면 되므로 결과를 구분할 필요가 없고, 응답 차이로 token 유효성을 알아내는 것도 막는다(§2.2)."
+    },
+    {
+     "id": "AUT09-Q09",
+     "q": "서비스 A 가 사용자 token 을 서비스 B 에 그대로 넘기면 무엇이 문제이고 대안은?",
+     "a": "A 용(넓은 audience·scope) token 이 B 와 그 로그로 퍼지고, B 가 침해되면 A 에도 쓸 수 있다. RFC 8693 token exchange 로 aud=B·좁은 scope·act 가 있는 token 으로 바꾼다."
+    },
+    {
+     "id": "AUT09-Q10",
+     "q": "LP 포털에서 \"비활성화하면 바로 끊는다\" 로 정하면 최소한 무엇을 구현해야 하나?",
+     "a": "비활성화 transaction 안에서 그 사용자 BFF session 삭제 + refresh token family 전부 폐기 + refresh endpoint 에서 계정 상태 확인. API 까지 즉시라면 tokens_valid_after 같은 사용자 단위 deny 나 요청별 상태 확인을 더한다."
+    }
+   ]
+  },
+  {
+   "id": "AUT10",
+   "title": "AUT10 브라우저 보안과 token 저장 위치 — BFF",
+   "part": "2부 방법론 — 실무 핵심",
+   "summary": "브라우저에서 로그인 상태(session·token)를 어디에 두고, CSRF·XSS·CORS·clickjacking·iframe cookie 문제를 어떻게 막는지 정리한 장이다. 결론은 \"token 을 브라우저 JavaScript 에 두지 않는다\" — 2026-08 발행된 RFC 10017(OAuth 2.0 for Browser-Based Applications, BCP 212)이 보안이 높은 순서로 BFF → token-mediating backend → 브라우저 OAuth client 를 두고, 같은 도메인 1st-party 앱은 OAuth 없이 서버 session cookie 로 충분하다고 적는다. LP 포털·어드민은 __Host- cookie + 서버 session(BFF) + CSRF 방어(custom header 또는 Fetch Metadata + Origin 확인) + strict CSP 를 기본값으로 고른다.",
+   "items": [
+    {
+     "id": "AUT10#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "AUT10#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "AUT10#원리",
+     "title": "원리"
+    },
+    {
+     "id": "AUT10#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "AUT10#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "AUT10#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "AUT10#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "AUT10#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "AUT10#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "AUT10#LP 포털·어드민 적용",
+     "title": "적용 사례 — B2B 포털·어드민"
+    },
+    {
+     "id": "AUT10#다른 장 연결",
+     "title": "다른 장 연결"
+    }
+   ],
+   "cards": [
+    {
+     "id": "AUT10-Q01",
+     "q": "HttpOnly cookie 에 session 을 두면 XSS 에 안전한가?",
+     "a": "아니다. 공격 script 는 cookie 값을 읽지 못하지만, 사용자 브라우저 안에서 우리 API 를 그대로 호출할 수 있다(RFC 10017 §5.1.4). 차이는 공격자가 값을 들고 나가 사용자가 창을 닫은 뒤·다른 PC 에서 쓸 수 없다는 것. XSS 자체는 출력 encoding·strict CSP·Trusted Types 로 막는다."
+    },
+    {
+     "id": "AUT10-Q02",
+     "q": "SameSite=Lax 를 켰는데도 CSRF 방어가 필요한 이유 두 가지는?",
+     "a": "① same-site 의 다른 하위 도메인(탈취·취약 서비스)에서 오는 request 는 cross-site 가 아니라 cookie 가 붙는다(RFC 10017 §6.1.3.3.1). ② Lax 는 top-level GET navigation 에 cookie 를 붙이므로 GET 으로 상태를 바꾸는 endpoint 는 뚫린다. 그래서 OWASP 는 SameSite 를 defense in depth 로만 분류한다."
+    },
+    {
+     "id": "AUT10-Q03",
+     "q": "custom header(X-CSRF: 1)가 값이 고정인데도 CSRF 방어가 되는 이유는?",
+     "a": "cross-origin 에서 custom header 를 붙이려면 CORS preflight 가 필요하고, 서버가 그 origin 을 허락하지 않으면 브라우저가 본 request 를 보내지 않는다. form·<img> 는 custom header 를 붙일 수 없다. 단 서버가 모든 상태 변경 request 에서 header 를 확인해야 하고(RFC 10017 §6.1.3.3.2 MUST), CORS 허용 origin 은 header 를 붙일 수 있다."
+    },
+    {
+     "id": "AUT10-Q04",
+     "q": "RFC 10017 의 세 패턴을 보안 순서로 나열하고, token-mediating backend 가 막지 못하는 것은?",
+     "a": "BFF → token-mediating backend → browser-based OAuth client(§6 \"decreasing order of security\"). token-mediating backend 는 access token 을 브라우저에 주므로 access token 탈취(§5.1.1·5.1.2)와 §5.1.4 를 막지 못한다."
+    },
+    {
+     "id": "AUT10-Q05",
+     "q": "숨은 iframe 으로 token 을 갱신하던 SPA 가 Safari 에서 자꾸 로그아웃된다. 왜이고 대안은?",
+     "a": "iframe 안 IdP 페이지가 cross-site 라 IdP session cookie 가 third-party cookie 로 차단된다(Safari 2020 ITP 전면 차단). 대안: BFF(서버가 token endpoint 로 refresh), 또는 refresh token rotation(Auth0 SDK 방식), 또는 IdP 를 같은 site 하위 도메인에 둠."
+    },
+    {
+     "id": "AUT10-Q06",
+     "q": "로그인 form 에도 CSRF 방어가 필요한 이유(login CSRF)는?",
+     "a": "공격자가 자기 계정으로 피해자 브라우저를 로그인시키면, 피해자가 그 뒤 입력한 정보(검색 기록·결제 정보·업로드)가 공격자 계정에 쌓인다. pre-session 에 묶은 token 으로 막고, 로그인 성공 시 pre-session 을 버리고 새 session id 를 준다."
+    },
+    {
+     "id": "AUT10-Q07",
+     "q": "__Host- prefix 가 강제하는 세 조건과 그것이 막는 공격은?",
+     "a": "Secure, Path=/, Domain 없음(host-only). 하위 도메인이 상위 도메인용 cookie 를 심어 덮어쓰는 cookie tossing·session fixation 을 막는다(6265bis §4.1.3.2)."
+    },
+    {
+     "id": "AUT10-Q08",
+     "q": "로그인했는데 403(Q03)과 로그인 상태가 안 잡힘(Q06)을 가르는 첫 확인은?",
+     "a": "Q03: 존재하지 않는 경로도 같은 403 페이지인지 — 그렇다면 앞단 proxy 의 경로 미등록이고 cookie 와 무관. Q06: DevTools 에서 request 에 cookie 가 실제로 붙었는지 → 붙었으면 앱이 원래 scheme·경로를 아는지(X-Forwarded-Proto, base path)와 session 확인 API 가 닿는지, 안 붙었으면 cookie 의 Domain·Path·Secure·SameSite 와 현재 URL 을 비교."
+    },
+    {
+     "id": "AUT10-Q09",
+     "q": "strict CSP 에서 allowlist 대신 nonce 를 쓰는 이유는?",
+     "a": "allowlist 에 넣은 도메인(CDN 등)에 JSONP endpoint 나 오래된 라이브러리가 있으면 공격자가 그것을 통해 임의 script 를 실행할 수 있다(Weichselbaum et al. CCS 2016). nonce 는 request 마다 바뀌어 공격자가 주입한 <script> 에 붙일 수 없다."
+    }
+   ]
+  },
+  {
+   "id": "AUT41",
+   "title": "AUT41 로그인 상태 유지 방식 비교 — 서버 session vs token",
+   "part": "2부 방법론 — 실무 핵심",
+   "summary": "결론: 브라우저로 쓰는 한 서비스(같은 도메인 화면 + API)는 서버 session(무작위 id 를 HttpOnly cookie 에, 상태는 Redis·DB) 을 고르고, token(JWT access + refresh rotation)은 검증자가 발급자 저장소를 못 보는 곳 — 모바일 앱·외부 파트너 API·여러 조직·마이크로서비스 내부 — 에만 쓰며, 외부 IdP 나 다른 도메인 API 가 끼면 브라우저엔 cookie 만 두고 token 은 서버가 드는 BFF 로 둘을 합친다. LP 포털(외부 고객사 담당자·브라우저)은 서버 session, LP 포털 어드민(사내 SSO 입장권으로 진입 — AUT36 사내 SSO 연동 — Circle SLO·AI Portal)은 입장권을 로그인 순간에만 확인하고 어드민 자체 서버 session 을 만드는 것을 추천한다. 정할 것 없음.",
+   "items": [
+    {
+     "id": "AUT41#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "AUT41#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "AUT41#원리",
+     "title": "원리"
+    },
+    {
+     "id": "AUT41#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "AUT41#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "AUT41#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "AUT41#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "AUT41#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "AUT41#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "AUT41#LP 포털·어드민 적용",
+     "title": "적용 사례 — B2B 포털·어드민"
+    },
+    {
+     "id": "AUT41#더 깊이",
+     "title": "더 깊이"
+    },
+    {
+     "id": "AUT41#다른 장 연결",
+     "title": "다른 장 연결"
+    }
+   ],
+   "cards": [
+    {
+     "id": "AUT41-Q01",
+     "q": "\"cookie 를 쓸까 JWT 를 쓸까\" 라는 질문은 왜 잘못 세운 질문인가?",
+     "a": "cookie 는 운반 수단이고 JWT 는 형식이다. 정할 것은 ① 상태를 서버에 두나 token 안에 두나 ② cookie 와 header 중 무엇으로 보내나 두 가지다. JWT 를 cookie 에 담을 수도(Auth.js 기본), session id 를 header 에 담을 수도(opaque token) 있다."
+    },
+    {
+     "id": "AUT41-Q02",
+     "q": "stateless JWT 로 \"관리자가 누르면 즉시 로그아웃\" 을 구현하면 무엇이 바뀌나?",
+     "a": "deny list(jti) 나 token_version 같은 서버 상태를 매 request 조회해야 한다. 그 순간 stateless 의 이점(조회 없음)이 사라지고 사실상 서버 session 과 같은 비용을 낸다(ASVS 5.0 7.4.1, OWASP JWT Cheat Sheet)."
+    },
+    {
+     "id": "AUT41-Q03",
+     "q": "M5(짧은 JWT + refresh)에서 계정을 비활성화했을 때 사용자가 최대 얼마나 더 API 를 쓸 수 있나? 줄이는 방법 둘은?",
+     "a": "최대 access token 수명(예 5분)만큼. 줄이려면 수명을 더 짧게 하거나, API 가 token_version·deny list·introspection 으로 상태를 확인한다."
+    },
+    {
+     "id": "AUT41-Q04",
+     "q": "서버 session 이 CSRF 대책을 따로 필요로 하고 header 방식 token 은 덜 필요한 이유는? 대신 header 방식이 더 약한 곳은?",
+     "a": "cookie 는 브라우저가 자동으로 붙이므로 다른 site 가 만든 request 에도 붙는다. header 는 JS 가 직접 붙여야 하므로 자동 첨부가 없다. 대신 JS 가 token 을 알아야 하므로 XSS 로 token 을 브라우저 밖으로 반출할 수 있다."
+    },
+    {
+     "id": "AUT41-Q05",
+     "q": "Auth.js·Auth0 Next.js SDK·oauth2-proxy 를 기본값으로 쓰면 어느 방식이 되고, R08 을 맞추려면 무엇을 바꾸나?",
+     "a": "셋 다 기본은 서명·암호화 cookie(M2, stateless)다. Auth.js 는 adapter + strategy: \"database\", Auth0 SDK 는 database session store, oauth2-proxy 는 redis session store 로 바꿔 서버 쪽 상태를 두어야 즉시 폐기된다."
+    },
+    {
+     "id": "AUT41-Q06",
+     "q": "사내 SSO 의 1회용 입장권은 이 장의 어느 방식에 해당하나?",
+     "a": "로그인 상태 유지 방식이 아니라 로그인 순간에만 쓰는 1회용 증거(OAuth authorization code 와 같은 자리)다. 그 뒤 로그인 상태는 각 서비스의 서버 session(M1)이 맡는다."
+    },
+    {
+     "id": "AUT41-Q07",
+     "q": "LP 포털 어드민이 매 request 사내 포털의 session 확인 API 만 부르는 구조보다 자체 session 을 만드는 쪽을 추천하는 이유 셋은?",
+     "a": "① 어드민만의 짧은 idle timeout·step-up 을 스스로 강제 ② 포털 cookie 를 어드민이 매번 다루지 않음(침해 범위 축소)·포털 장애와 분리 ③ 어드민 행위 감사를 어드민 session 단위로 남김. 대가는 포털 로그아웃 전파 — absolute timeout 을 짧게 두거나 주기 재확인으로 보완."
+    },
+    {
+     "id": "AUT41-Q08",
+     "q": "모바일 앱이 생기면 LP 포털의 브라우저 로그인 방식도 바꿔야 하나?",
+     "a": "아니다. 모바일 client 에만 M5(짧은 JWT + refresh rotation, OS 보안 저장소)를 추가하고 브라우저는 M1 을 유지한다. client 종류별로 방식을 고르는 것이 정상이다."
+    }
+   ]
+  },
+  {
+   "id": "AUT11",
+   "title": "AUT11 OAuth 2.0/2.1 흐름",
+   "part": "2부 방법론 — 실무 핵심",
+   "summary": "OAuth 2.0 이 \"누가 무엇을 대신 해도 되나\"를 넘겨주는 인가 위임 틀이라는 것과, 네 역할·두 client 유형·grant 여섯 가지(쓸 것 넷 + 폐기된 implicit·ROPC)가 각각 어떻게 동작하고 왜 그렇게 바뀌었는지 답한다. 결론: 사람이 있는 흐름은 authorization code + PKCE(S256) 하나, 사람 없는 서버 사이는 client credentials, 입력 장치가 약한 기기는 device grant, 수명 연장은 refresh token(public client 는 rotation 또는 sender-constrained)이고, OAuth 2.1 초안(draft-ietf-oauth-v2-1-17, 2026-10-31, 아직 RFC 아님)이 이것을 한 문서로 묶는다. 정할 것 없음.",
+   "items": [
+    {
+     "id": "AUT11#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "AUT11#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "AUT11#원리",
+     "title": "원리"
+    },
+    {
+     "id": "AUT11#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "AUT11#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "AUT11#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "AUT11#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "AUT11#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "AUT11#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "AUT11#LP 포털·어드민 적용",
+     "title": "적용 사례 — B2B 포털·어드민"
+    },
+    {
+     "id": "AUT11#다른 장 연결",
+     "title": "다른 장 연결"
+    }
+   ],
+   "cards": [
+    {
+     "id": "AUT11-Q01",
+     "q": "OAuth 2.0 access token 을 받았다는 사실만으로 \"이 사용자가 로그인했다\"고 보면 왜 안 되나?",
+     "a": "access token 은 \"이 token 을 가진 쪽에 이 scope 를 허락했다\"는 뜻이고 어느 client 를 위해 발급됐는지 client 가 검증할 표준 수단이 없다. 다른 앱용으로 발급된 token 을 공격자가 넣으면 그 사용자로 로그인된다(pseudo-authentication). 로그인은 aud 가 내 client_id 인 OIDC ID token 으로 판정한다."
+    },
+    {
+     "id": "AUT11-Q02",
+     "q": "authorization code 를 front channel 로, token 을 back channel 로 나눈 이유는?",
+     "a": "front channel(브라우저 redirect)은 기록·Referer·확장 프로그램·악성 앱에 노출되고 변조될 수 있다. 그래서 짧고 1회용이며 그것만으로는 쓸 수 없는 code 만 보내고, 실제 token 은 client 인증·PKCE 검증이 가능한 back channel 에서 준다."
+    },
+    {
+     "id": "AUT11-Q03",
+     "q": "PKCE 가 있으면 state 는 필요 없나?",
+     "a": "RFC 9700 §4.7 은 AS 가 PKCE 를 지원하는 것이 확실할 때만 PKCE 로 CSRF 를 막을 수 있다고 한다. 지원이 불확실하면 state 나 nonce 가 MUST. 실무에선 둘 다 쓰고, state 는 \"이 브라우저가 시작한 흐름인가\"를 직접 확인하는 값이라 디버깅·mix-up 대응에도 쓴다."
+    },
+    {
+     "id": "AUT11-Q04",
+     "q": "confidential client 에도 PKCE 를 권하는 이유는? client 인증이 있지 않나?",
+     "a": "client 인증은 \"token request 를 보낸 것이 그 client 다\"를 증명하지만, 공격자가 훔친 code 를 피해자 대신 정상 client 에 넣는 authorization code injection 은 막지 못한다(정상 client 가 자기 자격 증명으로 교환해 줌). PKCE 는 그 code 를 시작한 브라우저 session 의 verifier 와 묶어서 막는다(RFC 9700 §4.5)."
+    },
+    {
+     "id": "AUT11-Q05",
+     "q": "implicit grant 와 ROPC 는 각각 왜 폐기됐고, 지금 규정 수준은?",
+     "a": "implicit: token 이 URL fragment 로 브라우저에 와 유출·injection 에 약하고 바인딩·refresh 불가 → RFC 9700 §2.1.2 SHOULD NOT, OAuth 2.1 초안에서 삭제. ROPC: client 가 사용자 비밀번호를 직접 봄 → MFA·SSO 우회, phishing 습관 → RFC 9700 §2.4 MUST NOT, 2.1 초안에서 삭제. (implicit 은 \"금지\"가 아니라 SHOULD NOT 임에 주의.)"
+    },
+    {
+     "id": "AUT11-Q06",
+     "q": "Microsoft Graph 를 앱 권한으로 부를 때 인증서는 권한마다 따로 받아야 하나? (Q09)",
+     "a": "아니다. 권한(roles)은 앱 등록과 관리자 consent 에 붙고, 인증서는 client credentials 의 client 인증(private_key_jwt) 수단이다. 한 앱에 인증서를 여러 개 올려 교체 기간에 겹쳐 둘 수 있고, 어느 인증서로 인증하든 같은 권한의 token 이 나온다."
+    },
+    {
+     "id": "AUT11-Q07",
+     "q": "device authorization grant 의 가장 큰 위험과 대책은?",
+     "a": "원격 phishing — 공격자가 자기 기기로 받은 user_code 를 피해자가 입력하게 유도하면 피해자가 공격자 기기를 승인한다. 대책: 승인 화면에 기기 정보 표시·소유 확인 문구, 짧은 수명, user_code 시도 rate limit, 필요 없는 곳에서 device flow 끄기(RFC 8628 §5.1·§5.4)."
+    },
+    {
+     "id": "AUT11-Q08",
+     "q": "public client 의 refresh token 에 rotation 을 쓰면 생기는 운영 문제와 해결은?",
+     "a": "refresh response 가 유실되거나 탭 두 개가 동시에 refresh 하면 이미 쓴 token 이 다시 들어가 재사용으로 판정 → family 폐기 → 강제 로그아웃. client 는 single-flight lock, AS 는 짧은 grace(같은 client 재시도 허용) 또는 DPoP 같은 sender-constrained 방식으로 대신한다(OAuth 2.1 초안 §4.3.3)."
+    },
+    {
+     "id": "AUT11-Q09",
+     "q": "OAuth 2.1 을 근거 규격으로 인용해도 되나?",
+     "a": "2026-11-07 기준 draft-ietf-oauth-v2-1-17(2026-10-31)은 Internet-Draft 라 규범 근거로는 RFC 9700(BCP 240)·RFC 6749·7636·8252 를 인용하고, 2.1 은 \"같은 방향으로 정리 중\"으로만 쓴다."
+    },
+    {
+     "id": "AUT11-Q10",
+     "q": "LP 포털 로그인 화면에서 비밀번호를 받는 것은 ROPC 인가?",
+     "a": "아니다. ROPC 는 client 가 다른 AS 의 사용자 비밀번호를 받아 token endpoint 에 넘기는 grant 다. LP 포털이 자기 사용자 DB 로 비밀번호를 확인하고 session 을 만드는 것은 OAuth 밖의 1st-party 로그인이다. 나중에 외부 IdP 로그인을 붙이면 그때는 code + PKCE 로 AS 화면에 보낸다."
+    }
+   ]
+  },
+  {
+   "id": "AUT12",
+   "title": "AUT12 OAuth 확장과 보안 BCP",
+   "part": "2부 방법론 — 실무 핵심",
+   "summary": "이 장은 OAuth 2.0 기본 흐름(AUT11 OAuth 2.0·2.1 흐름) 위에 덧붙은 보안 확장(RFC 9700 보안 BCP·PAR·JAR·RAR·resource indicators·AS metadata·iss parameter·client 인증 방식·step-up·GNAP)이 각각 어떤 공격을 막는지와, client 쪽에서 무엇을 골라 구현해야 하는지 답한다. 결론: 새로 만드는 client 는 authorization code + PKCE(S256) + 정확한 redirect URI + iss 확인을 기본으로 하고, confidential client 인증은 공유 비밀(client_secret_basic)보다 비대칭 키(private_key_jwt 또는 mTLS)를 고르며, client assertion 의 aud 는 AS 의 issuer identifier 하나로 둔다(2025 audience injection 대응). PAR 은 IdP 가 지원하면 켜고, RAR·GNAP 은 거래 단위 동의가 필요할 때만 꺼낸다.",
+   "items": [
+    {
+     "id": "AUT12#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "AUT12#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "AUT12#원리",
+     "title": "원리"
+    },
+    {
+     "id": "AUT12#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "AUT12#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "AUT12#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "AUT12#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "AUT12#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "AUT12#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "AUT12#LP 포털·어드민 적용",
+     "title": "적용 사례 — B2B 포털·어드민"
+    },
+    {
+     "id": "AUT12#다른 장 연결",
+     "title": "다른 장 연결"
+    },
+    {
+     "id": "AUT12#더 깊이",
+     "title": "더 깊이"
+    }
+   ],
+   "cards": [
+    {
+     "id": "AUT12-Q01",
+     "q": "RFC 9700 에서 implicit grant 와 ROPC grant 의 권고 수준은 각각 무엇인가?",
+     "a": "implicit 은 SHOULD NOT(§2.1.2, 조건부 예외 있음), ROPC 는 MUST NOT(§2.4). OAuth 2.1 초안은 둘 다 뺐다."
+    },
+    {
+     "id": "AUT12-Q02",
+     "q": "mix-up 공격이 성립하려면 client 에 어떤 조건이 있어야 하고, RFC 9207 은 무엇을 더해 막나?",
+     "a": "client 가 AS 를 둘 이상 쓰고, authorization response 가 어느 AS 것인지 구분할 수 없어야 한다. RFC 9207 은 response 에 iss 를 넣게 하고 client 는 흐름을 시작한 issuer 와 문자열 비교로 확인한다(다르거나, 지원 AS 인데 없으면 거부)."
+    },
+    {
+     "id": "AUT12-Q03",
+     "q": "PAR 가 JAR 없이도 authorization request 의 무결성을 주는 이유는?",
+     "a": "parameter 가 브라우저를 거치지 않고 client 인증이 붙은 back channel POST 로 AS 에 직접 가기 때문이다. 브라우저에는 client_id 와 1회용 request_uri 만 실린다(RFC 9126 §2·§4)."
+    },
+    {
+     "id": "AUT12-Q04",
+     "q": "private_key_jwt 가 client_secret_basic 보다 안전한 이유 두 가지와, 새로 생긴 위험 하나는?",
+     "a": "AS 가 public key 만 가져 AS 유출에 안전하고, 비밀 원문이 회선에 안 실리며 assertion 수명이 짧다. 새 위험: aud 를 잘못 정하면 audience injection(악성 AS 가 assertion 을 정직한 AS 에 재사용)."
+    },
+    {
+     "id": "AUT12-Q05",
+     "q": "audience injection 을 막는 rfc7523bis 의 규칙은?",
+     "a": "client 인증 assertion 의 aud 는 AS 의 issuer identifier 하나만, token endpoint URL 은 쓰지 않으며 AS 는 그렇지 않은 JWT 를 거부한다(draft-ietf-oauth-rfc7523bis-11, RFC Editor queue)."
+    },
+    {
+     "id": "AUT12-Q06",
+     "q": "M365 인증서 방식에서 thumbprint 와 권한은 각각 어디에 붙나?",
+     "a": "thumbprint 는 client assertion header(x5t#S256)에 붙어 검증할 인증서를 고르는 데 쓰이고, 권한은 앱 등록에 붙어 access token 의 roles 로 나온다."
+    },
+    {
+     "id": "AUT12-Q07",
+     "q": "resource indicators 와 RAR 는 각각 어떤 질문에 답하나?",
+     "a": "resource indicators: \"이 token 을 어느 RS 에서 쓰나\"(audience). RAR: \"그 RS 에서 정확히 무엇을 하도록 허락하나\"(거래 단위 내용)."
+    },
+    {
+     "id": "AUT12-Q08",
+     "q": "step-up 에서 RS 가 돌려주는 error 와 parameter, AS 가 요구를 못 채울 때 error 는?",
+     "a": "RS: insufficient_user_authentication + acr_values·max_age(RFC 9470 §3). AS: unmet_authentication_requirements(§5)."
+    },
+    {
+     "id": "AUT12-Q09",
+     "q": "confidential client 인데 PKCE 를 왜 쓰나?",
+     "a": "authorization code injection(훔친 code 를 공격자 session 에 넣기)을 client 인증만으로는 막지 못하기 때문이다(RFC 9700 §2.1.1 RECOMMENDED, §4.5)."
+    },
+    {
+     "id": "AUT12-Q10",
+     "q": "LP 포털이 IdP 를 하나만 붙일 계획이어도 iss 확인을 처음부터 켜 두는 이유는?",
+     "a": "IdP 가 둘 이상이 되는 순간 mix-up 방어가 REQUIRED 가 되고(RFC 9700 §2.1), 흐름 저장 구조(issuer 를 flow 에 묶기)를 나중에 바꾸기가 더 비싸다."
+    }
+   ]
+  },
+  {
+   "id": "AUT13",
+   "title": "AUT13 OpenID Connect",
+   "part": "2부 방법론 — 실무 핵심",
+   "summary": "OpenID Connect(OIDC)가 OAuth 2.0 위에 \"누가 로그인했나\"를 증명하는 ID token·discovery·userinfo·로그아웃 규격을 더한 방식과, ID token 검증 규칙·흐름(code·implicit·hybrid)·로그아웃 방식 다섯 가지의 비교를 다룬다. 결론: 새 RP 는 authorization code + PKCE + nonce 로 로그인하고 ID token 을 Certified 라이브러리로 검증하며 사용자는 email 이 아니라 (iss, sub) 로 식별하고, 로그아웃은 RP-initiated + back-channel 을 기본으로 front-channel·session management 는 3rd-party cookie 차단 때문에 보조로만 쓴다. 정할 것 없음.",
+   "items": [
+    {
+     "id": "AUT13#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "AUT13#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "AUT13#원리",
+     "title": "원리"
+    },
+    {
+     "id": "AUT13#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "AUT13#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "AUT13#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "AUT13#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "AUT13#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "AUT13#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "AUT13#LP 포털·어드민 적용",
+     "title": "적용 사례 — B2B 포털·어드민"
+    },
+    {
+     "id": "AUT13#다른 장 연결",
+     "title": "다른 장 연결"
+    }
+   ],
+   "cards": [
+    {
+     "id": "AUT13-Q01",
+     "q": "ID token 과 access token 은 각각 누구를 위한 것이고, 왜 서로 바꿔 쓰면 안 되나?",
+     "a": "ID token 은 RP(aud = client_id)에게 \"누가 언제 어떻게 인증했나\" 를 알리는 것이고, access token 은 resource server 에 \"이 권한으로 호출해도 된다\" 를 보이는 것이다. ID token 을 API 에 보내면 RS 가 자기 것이 아닌 audience 의 token 을 받게 되고, access token 으로 로그인하면 다른 client 용 token 주입(pseudo-authentication)에 열린다."
+    },
+    {
+     "id": "AUT13-Q02",
+     "q": "code flow 에서 PKCE 를 쓰는데도 nonce 를 같이 보내는 이유는?",
+     "a": "PKCE 는 code 가로채기·code injection 을 막고, nonce 는 ID token 자체를 이 로그인 시도에 묶어 다른 흐름에서 얻은 ID token 의 replay·주입을 막는다. RFC 9700 은 confidential client 에 한해 nonce 가 PKCE 의 역할을 대신할 수 있다고도 하지만(public client 는 안 됨), 서로 막는 지점이 달라 둘 다 쓰는 것이 단순하고 안전하다."
+    },
+    {
+     "id": "AUT13-Q03",
+     "q": "사용자 table 에 sub 만 UNIQUE 로 두면 무엇이 깨지나? email 을 키로 쓰면?",
+     "a": "sub 는 issuer 안에서만 고유하므로 OP 가 둘이면 충돌한다 → UNIQUE(iss, sub). email 은 OP 에서 바뀌거나 검증되지 않을 수 있고(Core §5.1 MUST NOT, nOAuth 사례) 다른 OP 에서 같은 email 을 만들어 기존 계정을 차지할 수 있다."
+    },
+    {
+     "id": "AUT13-Q04",
+     "q": "Entra 공용 endpoint 로 멀티 tenant 로그인을 받을 때 iss 검사는 어떻게 하나?",
+     "a": "공용 discovery 의 issuer 는 {tenantid} 가 들어간 틀이라 그대로 비교하면 실패한다. ID token 의 tid 로 기대 issuer 를 만들고, 그 tenant 가 허용 목록에 있는지 확인한 뒤 iss 를 정확히 비교한다. 검사를 끄면 아무 tenant 의 사용자나 들어온다."
+    },
+    {
+     "id": "AUT13-Q05",
+     "q": "어드민에 \"로그아웃하면 다른 사내 서비스도 같이 로그아웃\" 을 약속하려면 어떤 조합이 필요하고, 그래도 남는 것은?",
+     "a": "RP-initiated(버튼 → OP session 종료) + back-channel(OP 가 다른 RP 서버에 알림). front-channel 은 3rd-party cookie 차단으로 실패할 수 있어 보조. 그래도 이미 발급된 access token 의 남은 수명과 back-channel 전송 실패(최선 노력)는 남는다 — 짧은 token 수명·introspection·Shared Signals 로 줄인다."
+    },
+    {
+     "id": "AUT13-Q06",
+     "q": "Logout Token 에 nonce 가 있으면 왜 거부하나?",
+     "a": "Logout Token 과 ID token 은 둘 다 같은 키로 서명된 JWT 라, nonce 가 있으면 ID token 검증 함수가 Logout Token 을 로그인 token 으로 받아들일 위험이 있다(cross-JWT confusion). 규격은 nonce MUST NOT 과 typ: logout+jwt(RECOMMENDED)로 두 종류를 구분한다."
+    },
+    {
+     "id": "AUT13-Q07",
+     "q": "prompt=login 을 보냈는데 ID token 의 auth_time 이 1시간 전이다. 어떻게 하나?",
+     "a": "OP 가 재인증하지 않았거나 누군가 request 에서 prompt 를 지웠다. 민감 작업이면 거부하고 max_age=0 으로 다시 보내거나 오류를 보인다. 재인증 판단은 요청 parameter 가 아니라 서명된 auth_time·acr 로 한다."
+    },
+    {
+     "id": "AUT13-Q08",
+     "q": "pairwise sub 를 쓰는 OP 에서 앱 도메인을 바꾸면 무슨 일이 생기고 어떻게 대비하나?",
+     "a": "sector(기본 redirect URI host)가 바뀌어 같은 사람의 sub 가 달라진다 → 기존 acct_identity 와 연결이 끊긴다. sector_identifier_uri 를 처음부터 등록하거나, 이전 때 옛 sub → 새 sub 재매핑(관리형이면 OP 가 주는 tenant 내 고정 ID 활용) 단계를 계획한다."
+    },
+    {
+     "id": "AUT13-Q09",
+     "q": "hybrid flow 가 code flow 보다 나은 점은 무엇이었고, 지금은 무엇으로 대신하나?",
+     "a": "front channel 로 ID token 을 같이 받아 code 교환 전에 iss·aud·nonce·c_hash 로 mix-up·code injection 을 탐지할 수 있었다. 지금은 RFC 9207 iss 응답 parameter + PKCE(+ PAR)로 front channel 에 ID token 을 내지 않고 같은 효과를 낸다(FAPI 2.0 의 선택)."
+    }
+   ]
+  },
+  {
+   "id": "AUT14",
+   "title": "AUT14 SAML 2.0",
+   "part": "2부 방법론 — 실무 핵심",
+   "summary": "이 장은 SAML 2.0 이 무엇으로 이루어지고(assertion·protocol·binding·profile·metadata) 브라우저 SSO 가 어떻게 흐르며, 왜 XML 서명 처리에서 사고가 반복되는지(XML Signature Wrapping·comment injection·parser differential·XXE)와 SP-initiated·IdP-initiated, SAML·OIDC 중 무엇을 고르나에 답한다. 결론: 새 서비스는 SAML 을 직접 파싱하지 않는다 — 엔터프라이즈 고객이 SAML 만 줄 때만 broker(Keycloak 같은 자가 호스팅 또는 관리형) 뒤에 두고 앱은 OIDC 하나만 말하게 하며, 꼭 앱에서 받아야 하면 유지되는 라이브러리 + SP-initiated + InResponseTo 검사 + assertion ID 재사용 거부를 기본값으로 둔다.",
+   "items": [
+    {
+     "id": "AUT14#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "AUT14#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "AUT14#원리",
+     "title": "원리"
+    },
+    {
+     "id": "AUT14#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "AUT14#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "AUT14#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "AUT14#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "AUT14#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "AUT14#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "AUT14#LP 포털·어드민 적용",
+     "title": "적용 사례 — B2B 포털·어드민"
+    },
+    {
+     "id": "AUT14#다른 장 연결",
+     "title": "다른 장 연결"
+    }
+   ],
+   "cards": [
+    {
+     "id": "AUT14-Q01",
+     "q": "SAML 의 assertion·protocol·binding·profile 은 각각 무엇을 정하나?",
+     "a": "assertion 은 신원 문장 내용(Subject·Conditions·statement), protocol 은 AuthnRequest/Response 같은 메시지 형식, binding 은 그 메시지를 HTTP-Redirect·POST·Artifact·SOAP 로 실어 나르는 방법, profile 은 Web Browser SSO 처럼 셋을 쓰임새에 맞게 조합하고 제약하는 규칙이다."
+    },
+    {
+     "id": "AUT14-Q02",
+     "q": "SP-initiated 에서만 할 수 있는 검사는 무엇이고, 그것이 막는 공격은?",
+     "a": "Response 의 InResponseTo 를 SP 가 저장한 AuthnRequest ID 와 대조하고 1회 소비하는 것. unsolicited Response 주입(login CSRF)과 가로챈 Response 재사용을 막는다."
+    },
+    {
+     "id": "AUT14-Q03",
+     "q": "POST binding 으로 Response 를 받을 때 서명은 어디에 있어야 하나(규격 문구 수준)?",
+     "a": "각 assertion 이 디지털 서명으로 보호돼야 한다(MUST) — Response 를 서명하거나 각 assertion 을 서명해 만족한다(Profiles §4.1.4.5, Errata 05 반영)."
+    },
+    {
+     "id": "AUT14-Q04",
+     "q": "XML Signature Wrapping 이 가능한 근본 이유와 SP 쪽 대책 두 가지는?",
+     "a": "XML DSig 는 문서의 일부(ID 로 가리킨 요소)만 서명하므로, 서명 검증 로직과 값 추출 로직이 서로 다른 요소를 볼 수 있다. 대책: 서명 Reference 가 이제 읽을 요소의 ID 인지 확인(또는 검증 결과 객체만 사용), schema 검증·절대 XPath, 그리고 직접 파싱 대신 유지되는 라이브러리."
+    },
+    {
+     "id": "AUT14-Q05",
+     "q": "2018년 comment injection 은 어떤 API 동작 때문에 생겼나?",
+     "a": "일부 XML text 추출 API 가 element 안 comment 뒤의 text node 를 버렸다. 정규화(c14n)는 comment 를 빼고 서명하므로 서명은 그대로 유효하고, 읽힌 NameID 만 짧아져 다른 사용자로 인식됐다."
+    },
+    {
+     "id": "AUT14-Q06",
+     "q": "assertion ID 를 기록해야 하는 기간은?",
+     "a": "그 assertion 이 유효한 동안 — SubjectConfirmationData 의 NotOnOrAfter 까지(Profiles §4.1.4.5)."
+    },
+    {
+     "id": "AUT14-Q07",
+     "q": "NameID 를 email 로 받아 그대로 계정 연결 키로 쓰면 어떤 문제가 생기나?",
+     "a": "email 은 바뀌고 재사용되며, 여러 IdP 가 같은 email 을 줄 수 있어 다른 사람이 같은 계정에 붙는다. 연결 키는 (IdP entityID, persistent NameID) 쌍으로 둔다."
+    },
+    {
+     "id": "AUT14-Q08",
+     "q": "broker 를 두면 얻는 것과 새로 생기는 위험은?",
+     "a": "얻는 것: 앱에서 XML 서명 처리가 사라지고 앱은 OIDC 하나만 시험, 고객사 추가가 설정 작업이 됨. 위험: broker 취약점·설정 실수·장애가 모든 로그인에 영향, 관리형이면 비용·락인."
+    },
+    {
+     "id": "AUT14-Q09",
+     "q": "Artifact binding 이 사내망 IdP + 인터넷 SP 구성에서 안 맞는 이유는?",
+     "a": "Artifact 는 SP 가 IdP 의 Artifact Resolution Service 에 SOAP 로 직접 접속해야 하는데, 사내망 안 IdP 에는 인터넷 SP 가 닿지 않는다. POST binding 은 브라우저가 중개하므로 브라우저만 양쪽에 닿으면 된다."
+    },
+    {
+     "id": "AUT14-Q10",
+     "q": "clock skew 허용을 크게 잡으면 무엇이 나빠지나?",
+     "a": "만료된 assertion 도 받아들이는 창이 넓어져 replay 위험이 커진다. 시계는 NTP 로 맞추고 허용은 1~3분(내 기준)으로 둔다. Errata 05 E92 는 3~5분을 합리적 기본값으로 들지만 설정 가능하게 두라고 하므로, 더 좁게 잡아도 규격과 어긋나지 않는다."
+    }
+   ]
+  },
+  {
+   "id": "AUT15",
+   "title": "AUT15 SSO·연합 구조와 소셜 로그인",
+   "part": "2부 방법론 — 실무 핵심",
+   "summary": "이 장은 여러 앱이 한 번 로그인을 나눠 쓰는 SSO 구조(앱별 직접 연합·중앙 IdP·IdP broker·포털 session 위임)와 소셜 로그인(Google·Apple·Kakao·Naver·Microsoft·GitHub)을 붙일 때 계정을 어떻게 식별·연결·해제하고 로그아웃을 어디까지 전파할 수 있는지 답한다. 핵심 결론: 사용자 식별은 언제나 (iss, sub) 쌍으로 하고 email 로 자동 연결하지 않으며(OIDC Core §5.7, NIST SP 800-63C-4 §3.4·§3.8), 연결은 이미 로그인된 session 에서 재인증 뒤에만 한다. 단일 로그아웃은 \"모든 앱이 즉시 로그아웃\" 을 보장하지 못하므로 back-channel logout + 짧은 앱 session 으로 근사한다.",
+   "items": [
+    {
+     "id": "AUT15#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "AUT15#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "AUT15#원리",
+     "title": "원리"
+    },
+    {
+     "id": "AUT15#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "AUT15#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "AUT15#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "AUT15#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "AUT15#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "AUT15#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "AUT15#LP 포털·어드민 적용",
+     "title": "적용 사례 — B2B 포털·어드민"
+    },
+    {
+     "id": "AUT15#다른 장 연결",
+     "title": "다른 장 연결"
+    }
+   ],
+   "cards": [
+    {
+     "id": "AUT15-Q01",
+     "q": "앱 A 에서 로그아웃했는데 앱 B 는 계속 로그인돼 있다. 왜이며, 무엇으로 줄이나?",
+     "a": "SSO 는 IdP session 으로 재인증을 생략할 뿐 앱마다 session 이 따로 있다(NIST SP 800-63C-4 §4.7). 앱 A 의 로그아웃은 A session(과 RP-Initiated 이면 IdP session)만 끝낸다. B 를 끝내려면 IdP 가 back-channel logout 으로 B 에 알리거나(C4), B 의 session 을 짧게 해 IdP 재확인 때 떨어지게 한다(C5). front-channel(C3)은 third-party cookie 차단이면 실패할 수 있다."
+    },
+    {
+     "id": "AUT15-Q02",
+     "q": "Google 과 Kakao 로 같은 email 이 왔다. 자동으로 같은 계정으로 묶어도 되나?",
+     "a": "기본은 아니다. OIDC Core §5.7 은 email 을 고유 식별자로 쓰지 말라(MUST NOT)고 하고, email 은 재배정될 수 있다. 묶으려면 사용자가 한쪽으로 로그인한 상태에서 다른 쪽을 재인증으로 연결하게 한다(B2). 자동 연결(B3)을 한다면 두 provider 모두 email 검증을 확인(Kakao 는 is_email_verified·is_email_valid 둘 다)하고, 기존 계정의 미검증 비밀번호를 무효화해야 pre-hijacking 을 막는다."
+    },
+    {
+     "id": "AUT15-Q03",
+     "q": "acct_identity table 의 UNIQUE 제약을 subject 하나에만 걸면 무엇이 문제인가?",
+     "a": "sub 는 issuer 안에서만 고유하다(OIDC Core §2). 다른 IdP 가 같은 문자열 sub 를 낼 수 있어, issuer 를 빼면 다른 사람과 충돌하거나 남의 계정으로 해결된다. (issuer, subject) 에 걸어야 한다."
+    },
+    {
+     "id": "AUT15-Q04",
+     "q": "Apple 로그인에서 두 번째 로그인부터 이름이 비어 있다. 버그인가?",
+     "a": "아니다. Apple 은 이름·email 을 첫 인증 때만 앱에 주고 이후에는 identity token 의 email 만 준다. 첫 callback 에서 저장해야 한다. 사용자가 앱 연결을 지웠다가 다시 연결하면 그때 다시 받는다."
+    },
+    {
+     "id": "AUT15-Q05",
+     "q": "IdP broker 를 두면 앱이 잃는 정보는 무엇이고 어떻게 되살리나?",
+     "a": "앱은 broker 의 sub 만 보므로 원 IdP(소셜인지 회사 SAML 인지)와 그 인증 강도를 모른다. broker 가 idp·acr·amr 같은 claim 으로 넘기게 설정하고, 앱 DB 에 원 IdP 의 (iss, sub) 도 남기면 broker 교체 때도 다시 매핑할 수 있다."
+    },
+    {
+     "id": "AUT15-Q06",
+     "q": "사내 포털 session 위임형 SSO 가 OIDC 와 다른 보안 성질 두 가지는?",
+     "a": "① 서명된 assertion 이 없어 하위 서비스는 포털 API 의 응답과 그 호출 경로만 믿는다(aud·nonce 같은 표준 검증이 없음). ② 같은 도메인 cookie 로 묶여 하위 서비스 하나의 cookie 유출이 포털 session 전체 탈취가 된다. 그래서 하위 서비스는 확인 뒤 자기 session 을 따로 발급하는 편이 낫다."
+    },
+    {
+     "id": "AUT15-Q07",
+     "q": "Microsoft 로그인에서 사용자 키로 무엇을 쓰고, 왜 email 이 아닌가?",
+     "a": "multi-tenant 앱은 tid+oid(또는 앱별 sub). Entra 의 email 은 사용자가 바꿀 수 있고 도메인 소유가 검증되지 않았을 수 있어, email 로 식별하면 다른 tenant 에서 같은 email 을 설정한 공격자가 들어올 수 있다(nOAuth 류). Microsoft 는 2023-06 부터 새 multi-tenant 앱에서 미검증 email 을 기본으로 뺀다."
+    },
+    {
+     "id": "AUT15-Q08",
+     "q": "어드민에 B5(사전 등록) 를 고르는 근거와 비용은?",
+     "a": "근거: 어드민 사용자는 미리 알려진 소수이고, 가입 경로 자체를 없애면 연결 정책 실수·탈취 위험이 사라진다(NIST SP 800-63C-4 §3.8 의 pre-provisioning). 비용: 권한자 추가·삭제가 관리자 업무가 되고, 사람이 많아지면 SCIM·JIT 같은 자동화가 필요하다."
+    },
+    {
+     "id": "AUT15-Q09",
+     "q": "Wang·Chen·Wang(2012)과 SSOScan(2014)이 공통으로 보여 준 RP 쪽 실수 유형은?",
+     "a": "RP 가 IdP 가 서명·보증한 값과 브라우저가 전달한 값을 구분하지 못하거나, token 이 자기 앱용인지(aud) 확인하지 않는 등 검증 누락. 대책은 표준 라이브러리 검증 + 목 IdP 로 잘못된 token 을 넣는 시험."
+    }
+   ]
+  },
+  {
+   "id": "AUT16",
+   "title": "AUT16 MFA",
+   "part": "2부 방법론 — 실무 핵심",
+   "summary": "이 장은 2단계 인증(MFA, multi-factor authentication)의 수단(SMS·음성 OTP · email OTP · HOTP·TOTP · push · 하드웨어 key · passkey · 복구 코드)이 어떻게 동작하고 무엇을 막고 못 막는지, 등록·분실·초기화·step-up·기억된 기기까지 어떻게 설계하는지 답한다. 핵심 결론: 사람이 코드를 옮겨 적거나 \"승인\" 만 누르는 수단은 모두 실시간 중계 피싱(AitM)에 뚫리므로 NIST SP 800-63B-4 는 이를 phishing-resistant 로 치지 않는다(§3.2.5) — 그래서 LP 포털은 TOTP(기본) + passkey(피싱 저항 선택지) + 복구 코드 를 MfaMethod 인터페이스 하나로 받고, 어드민은 passkey·보안 key 필수 + 민감 작업 step-up 으로, SMS 는 넣지 않는 것을 추천한다. 가장 많이 뚫리는 곳은 수단 자체보다 등록·초기화(관리자 reset) 흐름 이므로 이 장의 구현 기준 대부분을 거기에 쓴다.",
+   "items": [
+    {
+     "id": "AUT16#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "AUT16#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "AUT16#원리",
+     "title": "원리"
+    },
+    {
+     "id": "AUT16#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "AUT16#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "AUT16#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "AUT16#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "AUT16#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "AUT16#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "AUT16#LP 포털·어드민 적용",
+     "title": "적용 사례 — B2B 포털·어드민"
+    },
+    {
+     "id": "AUT16#다른 장 연결",
+     "title": "다른 장 연결"
+    }
+   ],
+   "cards": [
+    {
+     "id": "AUT16-Q01",
+     "q": "TOTP 와 number matching push 는 둘 다 MFA 인데, 왜 NIST 63B-4 는 둘 다 피싱 저항이 아니라고 하나?",
+     "a": "둘 다 사람이 화면에서 본 값을 옮기거나(코드·숫자) 승인한다. 가짜 사이트가 진짜 사이트와 실시간으로 중계하면 사람은 정상으로 보고 값을 넘긴다. 63B-4 §3.2.5 는 수동 입력 방식을 피싱 저항으로 보지 않고, origin(verifier name)이나 TLS channel 에 결과가 묶이는 프로토콜(WebAuthn·client 인증서)만 인정한다."
+    },
+    {
+     "id": "AUT16-Q02",
+     "q": "TOTP verify 에서 last_used_step 이 없으면 어떤 공격이 되고, 왜 row lock 이 필요한가?",
+     "a": "같은 30초(±1 창이면 최대 90초) 안에 같은 코드를 다시 쓸 수 있어 어깨너머로 본 코드·중계된 코드를 재사용한다. RFC 6238 §5.2 는 두 번째 시도를 받지 말라(MUST NOT)고 한다. 두 요청이 동시에 와 둘 다 \"아직 안 씀\" 을 읽으면 둘 다 통과하므로 SELECT ... FOR UPDATE 로 읽고 쓰는 사이를 묶는다."
+    },
+    {
+     "id": "AUT16-Q03",
+     "q": "왜 TOTP seed 는 hash 로 저장할 수 없고, 대신 무엇을 하나?",
+     "a": "서버가 매 검증마다 seed 로 HMAC 을 다시 계산해야 하므로 원문이 필요하다. 그래서 KMS envelope 같은 가역 암호화로 저장하고, 쓸 때만 복호화하고 즉시 지운다(RFC 6238 §5.1). 암호화 key id 를 같이 저장해 key 회전에 대비한다."
+    },
+    {
+     "id": "AUT16-Q04",
+     "q": "복구 코드를 65bit 로 만들면 왜 SHA-256 이 아니라 Argon2id 로 저장하나?",
+     "a": "63B-4 §3.1.2.2 는 112bit 미만 look-up secret 을 salt 32bit 이상 + password hashing 방식으로 저장하라고 한다. 64bit 공간은 빠른 hash 면 DB 유출 뒤 GPU 로 대입이 가능하다. 128bit 이상으로 만들면 SHA-256 도 되지만 26자리라 입력이 불편하다."
+    },
+    {
+     "id": "AUT16-Q05",
+     "q": "관리자 MFA 초기화에서 가장 중요한 세 가지 통제는?",
+     "a": "(1) 요청이 온 채널이 아니라 미리 알고 있는 채널로 본인 확인, (2) 접수자와 다른 승인자(maker-checker), 둘 다 피싱 저항 step-up, (3) 실행 뒤 모든 session·기억된 기기·복구 코드 무효화와 사용자·조직 관리자 알림(63B-4 §4.2 복구 알림 SHALL)."
+    },
+    {
+     "id": "AUT16-Q06",
+     "q": "\"이 기기 30일 기억\" 을 NIST 는 어떻게 보나?",
+     "a": "63B-4 §5.1 은 \"remember my browser\" 가 인증을 대신하면 안 된다(SHALL NOT)고 하고, AAL2 재인증에서 비활동 제한은 넘었지만 전체 시간 제한(24시간 이하 SHOULD) 안일 때만 예외를 둔다. 그래서 30일 기억은 NIST AAL2 기준을 벗어나는 UX 타협이고, 쓰려면 낮은 위험 역할에 한정하고 민감 작업 step-up 은 항상 요구한다."
+    },
+    {
+     "id": "AUT16-Q07",
+     "q": "비밀번호 재설정 링크가 MFA 를 우회하는 경로가 되는 예와 막는 법은?",
+     "a": "재설정 뒤 자동 로그인하거나 재설정이 MFA 를 지우면, 메일만 턴 공격자가 두 요소를 모두 얻는다. 재설정은 비밀번호만 바꾸고, 그 뒤 로그인도 MFA 를 요구하며, MFA 분실은 별도의 초기화 절차로만 처리한다."
+    },
+    {
+     "id": "AUT16-Q08",
+     "q": "LP 포털에 SMS 를 넣지 않는 근거를 표준·운영 각각 하나씩 들면?",
+     "a": "표준: NIST 63B-4 에서 PSTN 은 restricted 라 대안 제공·위험 고지·이전 계획이 의무다(§3.2.9), CISA 도 2024-12 SMS 를 2차 요소로 쓰지 말라고 했다. 운영: 해외 LP 대상 국제 문자 비용·도달률과 SMS pumping 비용 악용 관리 부담이 TOTP 대비 크다."
+    },
+    {
+     "id": "AUT16-Q09",
+     "q": "Cognito 로 MFA 를 맡길 때 LP 포털 요구와 부딪칠 수 있는 제약 두 가지는?",
+     "a": "push 가 없고, passkey 를 비밀번호 뒤 2차 요소로 쓸 수 없다(passkey 는 UV 와 함께 1차로 MFA 를 충족하는 설정만). 또 adaptive 인증을 쓰려면 MFA 를 optional 로 둬야 해 \"어드민 필수\" 를 user pool 단위로 나눠야 할 수 있다."
+    }
+   ]
+  },
+  {
+   "id": "AUT17",
+   "title": "AUT17 WebAuthn·FIDO2·Passkey",
+   "part": "2부 방법론 — 실무 핵심",
+   "summary": "이 장은 WebAuthn·CTAP2(합쳐 FIDO2)와 passkey 가 왜 피싱에 강한지(origin·RP ID 바인딩), 등록·인증 ceremony 를 서버가 어떤 순서로 검증하는지, 동기화(synced) passkey·기기 묶음(device-bound) passkey·보안 key 중 무엇을 1차·2차 인증에 쓸지 답한다. 결론: 일반 사용자용 포털은 synced passkey 를 허용하고 attestation 은 none, userVerification: \"required\"·discoverable credential 로 받아 \"passkey 하나 = MFA 충족\" 으로 다루되, 피싱 가능한 대체 수단(SMS·email OTP)과 복구 흐름이 새는 곳이 되지 않게 막는다. 관리자·특권 계정처럼 AAL3 급 보증이 필요하면 device-bound(보안 key 또는 attestation 으로 확인한 플랫폼 key)로 좁힌다.",
+   "items": [
+    {
+     "id": "AUT17#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "AUT17#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "AUT17#원리",
+     "title": "원리"
+    },
+    {
+     "id": "AUT17#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "AUT17#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "AUT17#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "AUT17#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "AUT17#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "AUT17#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "AUT17#LP 포털·어드민 적용",
+     "title": "적용 사례 — B2B 포털·어드민"
+    },
+    {
+     "id": "AUT17#다른 장 연결",
+     "title": "다른 장 연결"
+    },
+    {
+     "id": "AUT17#더 깊이",
+     "title": "더 깊이"
+    }
+   ],
+   "cards": [
+    {
+     "id": "AUT17-Q01",
+     "q": "Q1. 피싱 사이트가 진짜 사이트와 똑같이 생겼고 사용자가 속아서 passkey 로 \"로그인\" 하려 한다. 무엇이 실패하나?",
+     "a": "피싱 도메인은 진짜 사이트의 RP ID 를 요청할 수 없어 진짜 passkey 가 목록에 아예 안 뜬다. 억지로 서명을 받아 와도 clientDataJSON.origin 이 피싱 도메인이고 rpIdHash 가 다르므로 진짜 서버 검증에서 떨어진다."
+    },
+    {
+     "id": "AUT17-Q02",
+     "q": "Q2. 서버 DB 의 webauthn_credential table 이 통째로 유출됐다. 공격자는 무엇을 할 수 있나?",
+     "a": "public key 와 credential ID 뿐이라 로그인용 비밀이 없다. 할 수 있는 것은 사용자·기기 모델(AAGUID) 같은 메타데이터 수집 정도다. 비밀번호 hash 유출과 가장 다른 점이다."
+    },
+    {
+     "id": "AUT17-Q03",
+     "q": "Q3. synced passkey 로 로그인하는 사용자의 sign count 가 계속 0 이다. 복제를 의심해야 하나?",
+     "a": "아니다. synced passkey 는 여러 기기가 같은 key 를 써서 counter 를 0 으로 보내는 경우가 많다. 저장값·수신값이 모두 0 이면 검사하지 않는다(WebAuthn L3 §6.1.1)."
+    },
+    {
+     "id": "AUT17-Q04",
+     "q": "Q4. 관리자 계정에 AAL3 를 요구한다. synced passkey 를 허용할 수 있나?",
+     "a": "없다. SP 800-63B-4 는 AAL3 에 비내보내기 private key 를 요구하고 synced authenticator 를 AAL3 에 쓰지 말라고(SHALL NOT) 한다. device-bound(보안 key 등)를 써야 하며 BE=0 과 attestation 으로 확인한다."
+    },
+    {
+     "id": "AUT17-Q05",
+     "q": "Q5. passkey 를 도입했는데도 피싱으로 계정이 털렸다. 가장 의심할 곳 두 곳은?",
+     "a": "① 대체 로그인 경로(SMS·email OTP·비밀번호)로 유도한 FIDO downgrade ② 로그인 뒤 session cookie 탈취. passkey 의 피싱 저항은 그 ceremony 에만 적용된다."
+    },
+    {
+     "id": "AUT17-Q06",
+     "q": "Q6. user.id 에 email 을 넣으면 왜 안 되나?",
+     "a": "authenticator·provider 에 저장되어 개인정보가 기기·클라우드에 남고, email 을 바꾸면 userHandle 과 계정이 어긋난다. 무작위 byte(최대 64)를 쓴다."
+    },
+    {
+     "id": "AUT17-Q07",
+     "q": "Q7. attestation direct 를 일반 사용자에게 강제하면 어떤 일이 생기나?",
+     "a": "synced passkey 는 대개 attestation 을 주지 않아 등록이 막히거나 정책상 거절된다. NIST 도 일반 대상 서비스에서 attestation 부재로 synced 를 막지 말라고(SHOULD NOT) 권고한다."
+    },
+    {
+     "id": "AUT17-Q08",
+     "q": "Q8. Cognito managed domain 을 RP ID 로 쓰다가 Keycloak 으로 옮기려 한다. passkey 는?",
+     "a": "passkey 는 RP ID(도메인)에 묶여 있어 새 도메인에서 쓸 수 없다. 모든 사용자가 재등록해야 한다. 처음부터 자기 도메인을 RP ID 로 두면 public key 를 이전해 계속 쓸 수 있다(관리형 서비스가 export 를 지원하는 경우)."
+    },
+    {
+     "id": "AUT17-Q09",
+     "q": "Q9. hybrid(QR) 로그인에서 공격자가 피싱 사이트에 QR 을 띄워 피해자가 찍게 하면?",
+     "a": "휴대폰이 보낸 BLE advertisement 를 PC 가 받아야 진행되므로, 피해자 근처에 공격자 Bluetooth 장비가 없으면 실패한다(CTAP 2.2 §11.5.1). 또 서명 origin 은 피싱 도메인이 된다."
+    },
+    {
+     "id": "AUT17-Q10",
+     "q": "Q10. 사용자가 서버에서 passkey 를 지웠는데 휴대폰 목록에 계속 보인다. 해결은?",
+     "a": "WebAuthn L3 Signal API — 로그인 실패 때 signalUnknownCredential, 로그인 성공 뒤 signalAllAcceptedCredentials 로 provider 에 알린다. 지원 브라우저만 동작하므로 기능 탐지 후 부른다."
+    }
+   ]
+  },
+  {
+   "id": "AUT18",
+   "title": "AUT18 계정 수명주기 ① 가입·초대·검증·첫 로그인",
+   "part": "2부 방법론 — 실무 핵심",
+   "summary": "이 장은 \"계정이 처음 생겨서 첫 로그인을 마칠 때까지\" 를 다룬다 — 공개 가입·초대 링크·관리자 생성 + 임시 비밀번호·JIT·SCIM·도메인 기반 자동 가입 중 무엇을 고르나, 이메일 주소의 주인을 어떻게 확인하나, 초대 token 을 어떻게 만들고 만료·재발송·취소하나, 첫 로그인 온보딩(약관 동의·MFA 등록)을 어디에 끼우나, 가입 단계의 계정 열거·중복 계정·이메일 정규화·pre-hijacking 을 어떻게 막나. 결론: 닫힌 B2B 포털(LP 포털)은 공개 가입을 닫고 \"요청 → 승인 → 1회용 초대 링크 → 본인이 첫 비밀번호 설정 → MFA 등록 → 약관 동의 → 활성\" 을 쓰고, 계정 상태(account.status)와 1회용 token(one_time_token)과 승인 요청(account_request)을 서로 다른 table·함수로 나누는 것이 핵심이다.",
+   "items": [
+    {
+     "id": "AUT18#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "AUT18#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "AUT18#원리",
+     "title": "원리"
+    },
+    {
+     "id": "AUT18#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "AUT18#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "AUT18#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "AUT18#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "AUT18#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "AUT18#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "AUT18#LP 포털·어드민 적용",
+     "title": "적용 사례 — B2B 포털·어드민"
+    },
+    {
+     "id": "AUT18#다른 장 연결",
+     "title": "다른 장 연결"
+    }
+   ],
+   "cards": [
+    {
+     "id": "AUT18-Q01",
+     "q": "초대 링크 방식이 \"관리자 생성 + 임시 비밀번호\" 보다 안전한 이유 두 가지는?",
+     "a": "(1) 운영자가 비밀번호를 만들지도 보지도 않는다 — ASVS 5.0 6.4.6. (2) 비밀번호 원문이 메일·메신저 같은 채널에 남지 않고, 링크는 hash 저장·짧은 만료·1회용이라 채널에 남아도 곧 쓸모가 없어진다. 덤으로 수락 자체가 이메일 소유 확인이 된다."
+    },
+    {
+     "id": "AUT18-Q02",
+     "q": "R07 의 \"초대만료\" 를 DB 상태 값으로 저장하지 않는 이유는?",
+     "a": "저장하려면 만료 시각에 상태를 바꾸는 배치가 필요하고, 배치가 늦거나 빠지면 만료된 링크가 동작하는 보안 버그가 된다. 검증 SQL 이 항상 expires_at > now() 를 보고, 화면 표시는 view 에서 계산한다."
+    },
+    {
+     "id": "AUT18-Q03",
+     "q": "초대 링크를 GET 으로 열 때 token 을 소비하면 무슨 일이 생기나?",
+     "a": "회사 메일 보안 스캐너·링크 미리보기가 먼저 GET 을 보내 token 이 소비되고, 사용자가 누를 때 \"만료된 링크\" 가 된다. GET 은 safe method(RFC 9110 §9.2.1)라 확인 화면만 보여 주고, 비밀번호 설정 POST 에서 조건부 UPDATE 로 소비한다."
+    },
+    {
+     "id": "AUT18-Q04",
+     "q": "User@Example.com 과 user@example.com 은 같은 계정이어야 하나? j.doe@gmail.com 과 jdoe@gmail.com 은?",
+     "a": "첫 쌍은 같은 계정으로 다룬다 — RFC 5321 §2.4 는 local-part 대소문자 구분을 이용하는 것을 권장하지 않고 도메인은 원래 구분 없음. 둘째 쌍은 Gmail 에서는 같은 메일함이지만 정규화로 합치지 않는다 — 점 무시는 Gmail 규칙일 뿐이고 회사 도메인(Google Workspace 포함)에서는 다른 사람일 수 있다."
+    },
+    {
+     "id": "AUT18-Q05",
+     "q": "공개 가입 폼에서 계정 열거를 막는 방법과, 그것이 이메일 검증 정책과 얽히는 이유는?",
+     "a": "항상 \"메일을 확인하세요\" 같은 중립 응답을 주고 status code·응답 시간을 맞추며, 이미 가입된 사람에게는 메일로 안내한다. 그런데 이메일 검증 없이 계정을 바로 만들면 unique 위반 오류가 응답에 드러나기 때문에, 완전한 방지는 \"검증 후 생성(mandatory)\" 일 때만 가능하다(django-allauth 문서의 설명)."
+    },
+    {
+     "id": "AUT18-Q06",
+     "q": "Classic-Federated Merge pre-hijacking 은 어떻게 동작하고 무엇으로 막나?",
+     "a": "공격자가 피해자 주소로 비밀번호 계정을 먼저 만들고, 피해자가 나중에 SSO 로 로그인하면 서비스가 같은 email 이라 두 계정을 합쳐 공격자 비밀번호가 살아남는다. 검증 전 계정은 합치지 않고, 합칠 때 기존 credential·session 을 폐기하며, 연합 계정은 iss+sub 로 식별한다."
+    },
+    {
+     "id": "AUT18-Q07",
+     "q": "초대 수락 직후 발급하는 session 에 왜 제한을 두나?",
+     "a": "이 시점의 인증은 \"메일함 + 방금 정한 비밀번호\" 뿐이라 MFA 필수 정책에 못 미친다. pending action(약관·MFA 등록)이 끝날 때까지 온보딩 endpoint 만 허용하고, 끝나면 session id 를 재발급하며 AAL 을 올린다."
+    },
+    {
+     "id": "AUT18-Q08",
+     "q": "승인(approve)과 초대 발급(issueInvite)을 다른 함수로 나누는 이점은?",
+     "a": "재발송은 승인 없이 발급만 다시 하고, 승인 규칙(요청자 ≠ 승인자, 승인자 자격)은 발급 코드와 독립적으로 바뀐다(maker-checker·위임 — AUT22). 발급 함수가 \"invited 상태 계정\" 만 받으니 승인을 건너뛴 발급이 구조적으로 불가능하다."
+    },
+    {
+     "id": "AUT18-Q09",
+     "q": "Cognito 로 LP 포털 R04(임시 비밀번호 없음)를 맞추려면 무엇이 필요한가?",
+     "a": "Cognito 기본 관리자 생성은 임시 비밀번호 메일이다. 초대 메시지를 SUPPRESS 로 끄고 우리 쪽에서 1회용 링크를 보내, 수락 때 AdminSetUserPassword(Permanent=true) 를 부르는 조합이 필요하다 — 결국 초대 흐름 대부분을 직접 짜게 된다(직접 시험은 안 한 추정)."
+    }
+   ]
+  },
+  {
+   "id": "AUT19",
+   "title": "AUT19 계정 수명주기 ② 재설정·잠금·휴면·삭제·복구",
+   "part": "2부 방법론 — 실무 핵심",
+   "summary": "이 장은 로그인 뒤의 계정 수명 — 비밀번호 재설정·변경, 로그인 실패 잠금, 휴면·비활성화, 삭제, MFA 를 잃었을 때의 복구, 이메일 변경 — 을 방법별로 비교하고, 각 단계에서 session·token·이력을 어떻게 다뤄야 하는지 답한다. 핵심 결론: \"되찾는 길\" 은 로그인보다 약한 고리가 되기 쉬우므로 재설정은 1회용 token(256bit·hash 저장·짧은 만료·원자적 1회 사용)과 같은 response 로, 실패 대응은 영구 잠금 대신 계정 단위 점진 지연 + 임시 잠금 + 재설정으로 풀기로, 비활성화·삭제·재설정은 모든 session 을 끊고(ASVS 5.0 7.4.2·7.4.3), 삭제는 소프트 삭제 → 유예 → 익명화로 이력 보존과 파기를 나눈다.",
+   "items": [
+    {
+     "id": "AUT19#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "AUT19#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "AUT19#원리",
+     "title": "원리"
+    },
+    {
+     "id": "AUT19#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "AUT19#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "AUT19#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "AUT19#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "AUT19#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "AUT19#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "AUT19#LP 포털·어드민 적용",
+     "title": "적용 사례 — B2B 포털·어드민"
+    },
+    {
+     "id": "AUT19#다른 장 연결",
+     "title": "다른 장 연결"
+    }
+   ],
+   "cards": [
+    {
+     "id": "AUT19-Q01",
+     "q": "비밀번호 재설정 링크를 메일 보안 스캐너가 먼저 열어도 사용자가 재설정할 수 있게 하려면?",
+     "a": "GET 은 token 을 확인만 하고 소비하지 않는다. 소비는 새 비밀번호를 담은 POST 에서 원자적 UPDATE(used_at IS NULL AND expires_at > now() 조건)로 한다."
+    },
+    {
+     "id": "AUT19-Q02",
+     "q": "\"3회 실패 시 잠금, 관리자 해제\" 정책의 가장 큰 문제 두 가지는?",
+     "a": "① 이메일만 알면 남이 일부러 3번 틀려 계정을 막는 잠금 DoS ② password spraying·credential stuffing 은 계정당 1~2회만 시도하므로 거의 못 막음. 대안: 계정 단위 점진 지연 + 임시 잠금 + 재설정으로 해제, 그리고 비밀번호 정책·유출 대조."
+    },
+    {
+     "id": "AUT19-Q03",
+     "q": "계정 열거가 새는 세 경로와 각 대책은?",
+     "a": "문구(항상 같은 문구), HTTP status(항상 같은 status), 응답 시간(발송 비동기·없는 계정에도 같은 계산). 잠긴·비활성 계정도 같은 문구."
+    },
+    {
+     "id": "AUT19-Q04",
+     "q": "계정을 비활성화했는데 사용자가 계속 화면을 쓰고 있다. 무엇을 빠뜨렸고 어느 기준을 어겼나?",
+     "a": "session·refresh token 폐기를 빠뜨렸다. OWASP ASVS 5.0 7.4.2(L1): 계정이 비활성화·삭제되면 모든 active session 을 종료해야 한다."
+    },
+    {
+     "id": "AUT19-Q05",
+     "q": "비밀번호 + TOTP 계정에서 재설정 뒤 TOTP 없이 로그인되면 어떤 요구를 어겼나?",
+     "a": "ASVS 5.0 6.4.3(L2) — 비밀번호 재설정이 켜 둔 MFA 를 우회하면 안 된다. 복구 경로의 강도가 평소 인증 강도보다 낮아진다."
+    },
+    {
+     "id": "AUT19-Q06",
+     "q": "제거 승인된 계정의 row 를 바로 하드 삭제하면 어떤 문제가 생기고, 대안은?",
+     "a": "감사 로그·승인 기록이 참조하는 사용자가 사라져 증적이 깨지고, 실수 복구가 불가능하다. 대안: 소프트 삭제 → 유예 → 식별 column 익명화(row·uuid 유지), 감사 로그는 uuid 만 참조."
+    },
+    {
+     "id": "AUT19-Q07",
+     "q": "2023-09-15 이후 국내에서 \"1년 미이용 휴면 전환\" 은 의무인가?",
+     "a": "아니다. 옛 개인정보 보호법 제39조의6(파기 특례, 유효기간제)이 2023-03-14 개정(2023-09-15 시행)으로 없어져 의무가 없어졌다(지금 제39조의6 번호는 다른 조문). 지금 휴면·장기 미사용 비활성화는 보안 판단에 따른 선택이다."
+    },
+    {
+     "id": "AUT19-Q08",
+     "q": "NIST SP 800-63B-4 가 정한 로그인 실패 제한의 상한과, 그보다 비밀번호 정책이 먼저인 이유는?",
+     "a": "연속 실패 100회 이하(SHALL, §3.2.2). 길이·blocklist 정책을 지킨 비밀번호는 100회 추측으로 거의 맞지 않으므로, 잠금 숫자를 낮추기보다 약한 비밀번호를 받지 않는 것이 효과가 크다."
+    },
+    {
+     "id": "AUT19-Q09",
+     "q": "이메일 변경을 \"새 주소 확인 링크\" 만으로 처리하면 어떤 공격이 되나?",
+     "a": "잠깐 session 을 얻은 공격자가 자기 메일로 바꾸고 확인 → 이후 재설정 메일이 공격자에게 가서 영구 탈취. 대책: 재인증 + 옛 주소 알림(MFA 없으면 옛 주소 확인까지)."
+    }
+   ]
+  },
+  {
+   "id": "AUT20",
+   "title": "AUT20 권한 모델 — ACL에서 ReBAC까지",
+   "part": "2부 방법론 — 실무 핵심",
+   "summary": "\"로그인한 이 사람이 이 자원에 이 행위를 해도 되나\" 를 표현하는 모델 — ACL·DAC·MAC·RBAC(NIST core·계층·SoD)·ABAC·ReBAC(Zanzibar)·PBAC — 의 동작 원리와 장단점, scope 와 권한의 차이, 화면 노출 권한과 API 권한의 차이를 다룬다. 결론: 모델은 하나를 고르는 것이 아니라 섞는다. B2B 포털·어드민은 \"코드에 고정한 소수 역할(RBAC) + 자원 범위 배정 table(관계, ReBAC 의 가장 단순한 형태) + 몇 개의 속성 조건(ABAC: 요청 상태·자기 요청 승인 금지)\" 을 서버의 authorize(subject, action, resource) 한 함수에서 deny-by-default 로 판정하는 것이 기본값이고, 전용 엔진(OpenFGA·Cedar 등)은 관계가 깊어지거나 서비스가 여럿일 때 AUT21 정책 엔진과 권한 아키텍처 에서 고른다.",
+   "items": [
+    {
+     "id": "AUT20#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "AUT20#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "AUT20#원리",
+     "title": "원리"
+    },
+    {
+     "id": "AUT20#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "AUT20#scope 와 권한의 차이",
+     "title": "scope 와 권한의 차이"
+    },
+    {
+     "id": "AUT20#화면 노출 권한 vs API 권한",
+     "title": "화면 노출 권한 vs API 권한"
+    },
+    {
+     "id": "AUT20#row-level 과 field-level 권한",
+     "title": "row-level 과 field-level 권한"
+    },
+    {
+     "id": "AUT20#위임 관리 — 권한을 주는 권한",
+     "title": "위임 관리 — 권한을 주는 권한"
+    },
+    {
+     "id": "AUT20#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "AUT20#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "AUT20#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "AUT20#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "AUT20#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "AUT20#LP 포털·어드민 적용",
+     "title": "적용 사례 — B2B 포털·어드민"
+    },
+    {
+     "id": "AUT20#다른 장 연결",
+     "title": "다른 장 연결"
+    },
+    {
+     "id": "AUT20#더 깊이",
+     "title": "더 깊이"
+    }
+   ],
+   "cards": [
+    {
+     "id": "AUT20-Q01",
+     "q": "인가 판단의 네 입력은 무엇이고, 자원 속성은 왜 client 값이 아니라 DB 값이어야 하나?",
+     "a": "주체·행위·자원·문맥. client 가 보낸 companyId 같은 값으로 판정하면 공격자가 값을 바꿔 경계를 넘는다. 자원은 id 로 DB 에서 읽은 실제 row 의 속성으로 판정한다."
+    },
+    {
+     "id": "AUT20-Q02",
+     "q": "순수 RBAC 만으로 R10(펀드 범위)을 풀 수 없는 이유와, 억지로 풀면 생기는 문제는?",
+     "a": "RBAC 의 역할은 \"어느 자원\" 을 모른다. approver_fund42 처럼 자원마다 역할을 만들면 역할 수가 펀드 × 직무로 늘어나는 역할 폭증이 생긴다. 해결은 역할 + 범위 배정 table(scoped role)."
+    },
+    {
+     "id": "AUT20-Q03",
+     "q": "NIST RBAC 의 SSD 와 DSD 는 각각 무엇이고, \"자기 요청 승인 금지\" 는 왜 둘 다로 표현되지 않나?",
+     "a": "SSD 는 상충 역할을 한 사람에게 배정하는 것을, DSD 는 한 session 에서 동시에 활성화하는 것을 막는다. 자기 요청 승인 금지는 같은 사람이 남의 요청은 승인해도 되므로 역할 단위가 아니라 요청 row 의 requested_by 와 비교하는 객체 수준 조건이다."
+    },
+    {
+     "id": "AUT20-Q04",
+     "q": "OAuth scope funds:read 가 든 token 을 가진 사용자가 펀드 42 를 읽으려 한다. 무엇을 더 확인해야 하나?",
+     "a": "scope 는 client 에 위임된 상한일 뿐이다. 사용자 자신의 권한(역할)과 자원 범위(펀드 42 배정, 회사–펀드 연결)를 서버에서 확인해야 한다. 허용 = scope ∩ 사용자 권한 ∩ 범위."
+    },
+    {
+     "id": "AUT20-Q05",
+     "q": "Zanzibar 의 \"new enemy\" 문제는 무엇이고 zookie 는 어떻게 막나?",
+     "a": "ACL 에서 사람을 뺀 뒤 내용을 바꿨는데 판정이 옛 ACL 스냅숏으로 이뤄지면 빠진 사람이 새 내용을 본다. 내용 변경 때 받은 zookie 를 저장해 두고, 판정 때 그 시점 이후 스냅숏을 쓰도록 요구해 순서를 지킨다."
+    },
+    {
+     "id": "AUT20-Q06",
+     "q": "메뉴 버튼을 역할로 숨겼다. 보안 검토에서 무엇을 지적받나?",
+     "a": "화면 노출은 보안 경계가 아니다(ASVS 5.0 8.3.1). 같은 판정을 API 에서 해야 하고(BFLA 방지), 메뉴 안 목록·상세는 객체 수준 판정(BOLA 방지)이 따로 필요하다."
+    },
+    {
+     "id": "AUT20-Q07",
+     "q": "R26 팀 묶음 배정을 \"팀원 수만큼 배정 row 복사\" 와 \"판정 때 그룹 펼치기\" 로 구현할 때 trade-off 는?",
+     "a": "복사는 판정이 빠르고 SQL 이 단순하지만, 팀원 추가·탈퇴 때 재계산 job 이 필요하고 누락되면 권한이 남는다. 펼치기는 항상 최신이지만 판정·목록 쿼리에 join 이 더해진다."
+    },
+    {
+     "id": "AUT20-Q08",
+     "q": "LP 회사 관리자에게 동료 배정 권한(Q15)을 줄 때 꼭 넣어야 할 규칙 두 가지는?",
+     "a": "① 관리 행위도 authorize(subject, 'assignment.manage', fund) 로 판정(자기 회사 연결 펀드만). ② 부분집합 규칙 — 자기가 가진 범위·LP 용 역할만 줄 수 있음(내부 역할 부여 금지)."
+    },
+    {
+     "id": "AUT20-Q09",
+     "q": "PBAC 는 RBAC·ABAC 와 같은 층의 모델인가?",
+     "a": "정의가 통일돼 있지 않다(NIST 용어집도 두 정의). 실무에서는 정책을 코드 밖 한 곳에 선언형으로 두고 RBAC·ABAC·ReBAC 규칙을 섞는 운영 방식에 가깝다 — 모델이라기보다 정책 배치의 선택."
+    },
+    {
+     "id": "AUT20-Q10",
+     "q": "AWS IAM 에서 identity policy 가 허용하고 SCP 가 명시 거부하면? 이 결합 방식의 이름은?",
+     "a": "거부. explicit deny 가 어떤 allow 보다 우선한다(deny-overrides). 또 SCP·RCP·permissions boundary 는 교집합으로 상한을 건다."
+    }
+   ]
+  },
+  {
+   "id": "AUT21",
+   "title": "AUT21 정책 엔진과 권한 아키텍처",
+   "part": "2부 방법론 — 실무 핵심",
+   "summary": "이 장은 권한 판단을 \"어디에서·어떤 언어로·어떤 일관성으로\" 하는지(PEP·PDP·PIP·PAP 분리, 정책 언어 Rego·Cedar·Casbin·Zanzibar schema, 중앙 PDP vs 내장 라이브러리, 목록 거르기 list filtering, 캐시와 consistency token, 정책 시험·결정 로그, OpenID AuthZEN Authorization API 1.0)를 답한다. 결론: 작은 B2B 포털은 앱 안에 PolicyEngine 인터페이스 하나(check·listAllowed)를 두고 코드 구현으로 시작하되, \"볼 수 있는 범위\" 는 SQL 조건을 만드는 범위 함수 하나에서만 계산한다. 규칙이 속성 조합으로 늘면 Cedar(내장)로, 관계 그래프가 깊어지면 OpenFGA·SpiceDB 로 같은 인터페이스 뒤에서 바꾼다.",
+   "items": [
+    {
+     "id": "AUT21#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "AUT21#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "AUT21#원리",
+     "title": "원리"
+    },
+    {
+     "id": "AUT21#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "AUT21#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "AUT21#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "AUT21#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "AUT21#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "AUT21#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "AUT21#LP 포털·어드민 적용",
+     "title": "적용 사례 — B2B 포털·어드민"
+    },
+    {
+     "id": "AUT21#다른 장 연결",
+     "title": "다른 장 연결"
+    },
+    {
+     "id": "AUT21#더 깊이",
+     "title": "더 깊이"
+    }
+   ],
+   "cards": [
+    {
+     "id": "AUT21-Q01",
+     "q": "PEP·PDP·PIP·PAP 를 Express 앱 + PostgreSQL 구조에서 각각 무엇에 대응시키나?",
+     "a": "PEP = route middleware(requirePermission), PDP = PolicyEngine 구현(코드 함수 또는 Cedar·OPA), PIP = 역할·배정·자원 table(PostgreSQL), PAP = 정책 코드·파일의 저장소와 배포(또는 역할 배정 관리 화면). 이름 기원은 RFC 2753, 네 부품 흐름은 XACML 3.0."
+    },
+    {
+     "id": "AUT21-Q02",
+     "q": "정책 엔진이 오류를 냈을 때 PEP 는 어떻게 해야 하고, 왜인가?",
+     "a": "거부(fail-closed). 허용으로 떨어지면 PDP·PIP 장애나 timeout 이 곧 권한 우회 경로가 된다. OWASP Authorization Cheat Sheet 의 deny by default 원칙."
+    },
+    {
+     "id": "AUT21-Q03",
+     "q": "\"목록에는 안 보이는데 URL 을 알면 열린다\" 는 버그는 구조적으로 어디서 생기며, 어떻게 막나?",
+     "a": "check 와 list 가 서로 다른 코드(다른 조건)에서 계산될 때 생긴다. check 를 list 의 범위 정의 위에 구현하고(같은 범위 함수), 무작위 데이터로 \"list 안 = check allow, list 밖 = deny\" property test 를 돌린다."
+    },
+    {
+     "id": "AUT21-Q04",
+     "q": "new enemy problem 을 예로 설명하고, SpiceDB 와 OpenFGA 가 각각 어떻게 다루는지 말하라.",
+     "a": "사용자를 폴더에서 뺀 뒤 새 문서를 넣었는데 낡은 권한 캐시 때문에 뺀 사용자가 새 문서를 본다. SpiceDB 는 쓰기 때 받은 ZedToken 을 저장해 두고 at_least_as_fresh 로 그 시점 이후 데이터로 check 한다(Zanzibar zookie). OpenFGA 는 요청별 HIGHER_CONSISTENCY 로 캐시를 건너뛴다(캐시 기본 꺼짐이면 항상 강한 일관성)."
+    },
+    {
+     "id": "AUT21-Q05",
+     "q": "자원 10만 개 중 사용자가 30개만 볼 수 있을 때 후필터(C1)가 나쁜 이유와 대안은?",
+     "a": "허용 비율이 0.03% 라 한 페이지를 채우려면 거의 전체를 가져와 check 해야 하고 개수·페이지 경계도 맞지 않는다. 범위 조건을 SQL 로 만들어 DB 가 거르게 하거나(C2), partial evaluation(C3)·역조회 API(C4, 결과가 작으므로 적합)를 쓴다."
+    },
+    {
+     "id": "AUT21-Q06",
+     "q": "Cedar 에서 permit 정책과 forbid 정책이 둘 다 맞으면 결과는? 아무것도 맞지 않으면?",
+     "a": "둘 다 맞으면 거부(forbid overrides permit). 아무 정책도 맞지 않으면 거부(기본 거부)."
+    },
+    {
+     "id": "AUT21-Q07",
+     "q": "AuthZEN Authorization API 1.0 은 무엇을 표준화하고 무엇을 표준화하지 않았나?",
+     "a": "PEP ↔ PDP 사이 HTTP JSON API(평가·배치 평가·subject/resource/action 검색·discovery metadata)를 표준화했다. 정책 언어와 PDP 내부(데이터 저장·평가 방식)는 표준화하지 않았다. 2026-01 Final."
+    },
+    {
+     "id": "AUT21-Q08",
+     "q": "OPA 1.0 으로 올리면서 옛 Rego 정책이 깨지는 대표 원인 두 가지는?",
+     "a": "규칙 본문 앞 if 키워드와 집합 규칙의 contains 키워드가 필수가 됐다(deny[msg] { … } → deny contains msg if { … }). opa fmt --v0-v1 등으로 옮긴다."
+    },
+    {
+     "id": "AUT21-Q09",
+     "q": "LP 포털에서 OpenFGA 를 바로 도입하지 않는 이유 두 가지는?",
+     "a": "권한 그래프가 두 층(회사 × 펀드, 담당자 × 펀드)뿐이라 SQL join 으로 정확·빠르게 거를 수 있고, OpenFGA 를 두면 같은 데이터를 앱 DB 와 tuple 두 곳에 써야 해(이중 기록) 동기화 누락이 곧 권한 버그가 된다."
+    }
+   ]
+  },
+  {
+   "id": "AUT22",
+   "title": "AUT22 조직 구조 권한 — 부서·직책·위임·대리",
+   "part": "3부 심화 — 조직·tenant·서비스·특권·공격·감사·규제",
+   "summary": "사내 직원이 쓰는 어드민에서 \"누가 어떤 역할을 갖고, 누가 무엇을 승인하며, 자리를 비우면 누가 대신하나\" 를 조직도(부서·직위·직책·겸직·담당 영역)에서 어떻게 계산하고, 조직이 바뀔 때 권한을 어떻게 따라 바꾸며, 정기 권한 검토로 어떻게 남은 권한을 걷어 내는지를 다룬다. 결론: 역할 부여는 \"조직 속성 규칙으로 후보를 계산 → 요청·승인(maker-checker, 요청자 ≠ 승인자)으로 확정 → 조직 변경 이벤트 때 재계산 + 분기별 access review\" 의 하이브리드가 B2B 어드민의 기본값이다. 위임·대리는 계정을 빌려주는 방식이 아니라 \"대리인이 자기 신원으로, 기간·범위가 정해진 delegation row 를 근거로 행동하고 감사 로그에 원 권한자와 대리인을 둘 다 남기는\" 방식만 쓴다.",
+   "items": [
+    {
+     "id": "AUT22#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "AUT22#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "AUT22#원리",
+     "title": "원리"
+    },
+    {
+     "id": "AUT22#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "AUT22#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "AUT22#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "AUT22#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "AUT22#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "AUT22#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "AUT22#LP 포털·어드민 적용",
+     "title": "적용 사례 — B2B 포털·어드민"
+    },
+    {
+     "id": "AUT22#다른 장 연결",
+     "title": "다른 장 연결"
+    },
+    {
+     "id": "AUT22#더 깊이",
+     "title": "더 깊이"
+    }
+   ],
+   "cards": [
+    {
+     "id": "AUT22-Q01",
+     "q": "\"팀장은 승인자\" 규칙에 직위(grade) 대신 직책(duty)을 쓰는 이유는?",
+     "a": "승인 권한은 자리(팀장)에 붙은 책임이고 사람의 등급(부장)과 일치하지 않는다. 직위를 쓰면 승진만으로 권한이 생기거나, 팀장이 아닌 부장이 승인자가 된다."
+    },
+    {
+     "id": "AUT22-Q02",
+     "q": "Static SoD 와 object-level SoD 의 차이는? 작은 조직에서 어느 쪽을 기본으로 하나?",
+     "a": "Static 은 두 역할을 동시에 배정받지 못하게 하고, object-level 은 같은 요청 객체에 두 역할을 쓰지 못하게 한다. 작은 조직은 팀장도 요청을 올려야 하므로 static 을 걸면 업무가 멈춘다 — object-level(자기 요청 승인 금지)을 기본으로 한다."
+    },
+    {
+     "id": "AUT22-Q03",
+     "q": "대리인이 승인할 때 서버가 검사해야 할 SoD 두 가지는?",
+     "a": "실제 행위자(대리인)가 요청자가 아닌가, 그리고 원 권한자가 요청자가 아닌가. 둘째를 빼면 팀장이 자기 요청을 부하에게 대리 승인시킬 수 있다."
+    },
+    {
+     "id": "AUT22-Q04",
+     "q": "규칙 재계산이 source=manual 배정을 지우지 않고 검토로 올리는 이유는?",
+     "a": "수동·요청 배정은 규칙과 무관한 사람의 판단·승인으로 생긴 것이라 규칙이 바뀌었다고 근거가 사라진 게 아니다. 지우면 승인된 예외가 사라지고, 남겨 두기만 하면 잔존 권한이 되므로 검토가 맞다."
+    },
+    {
+     "id": "AUT22-Q05",
+     "q": "승인 request 에 payload_hash 를 싣는 이유는?",
+     "a": "승인자가 본 내용과 반영될 내용이 같음을 보장한다(TOCTOU). 승인 화면을 연 뒤 요청자가 payload 를 바꾸면 hash 가 달라 승인이 거부된다."
+    },
+    {
+     "id": "AUT22-Q06",
+     "q": "조직도 원천을 로그인 때 JIT 로만 갱신하면 결재선 계산에서 무엇이 틀리나?",
+     "a": "로그인하지 않는 사람(퇴사자·휴직자·자주 안 쓰는 팀장)의 변화가 반영되지 않는다. 결재선은 \"다른 사람\" 의 현재 직책을 봐야 하므로 배치·이벤트·SCIM 같은 원천 동기화가 필요하다."
+    },
+    {
+     "id": "AUT22-Q07",
+     "q": "전결과 대결을 시스템 모델로 옮기면 각각 무엇인가?",
+     "a": "전결은 상시 규칙(결재선 규칙에 \"이 종류는 파트장이 최종\")이고, 대결은 기간이 있는 delegation row 다. 후결은 대결된 건을 원 권한자의 사후 확인 목록에 올리는 단계다."
+    },
+    {
+     "id": "AUT22-Q08",
+     "q": "Entra PIM 이 승인자에게 보장하는 것과 우리 어드민에 바로 못 쓰는 이유는?",
+     "a": "승인자는 자기 활성화 요청을 승인할 수 없고, 첫 결정이 요청을 끝내며, 승인 창은 24시간이다. 하지만 PIM 은 Entra·Azure·M365 역할을 관리하고 우리 앱 고유 역할(operator 등)은 대상이 아니며, 사내 SSO 도 Entra 가 아니다(AUT36 사내 SSO 연동 — Circle SLO·AI Portal)."
+    },
+    {
+     "id": "AUT22-Q09",
+     "q": "access review 에서 \"미응답 = 유지\" 가 왜 위험한가? 대안의 부작용은?",
+     "a": "검토가 형식이 되어 잔존 권한이 그대로 남는다. \"미응답 = 회수\" 는 안전하지만 실제로 필요한 사람의 업무를 끊을 수 있어 회수 전 경고 알림과 빠른 재요청 길이 필요하다."
+    }
+   ]
+  },
+  {
+   "id": "AUT23",
+   "title": "AUT23 멀티테넌시와 자원 범위 권한",
+   "part": "3부 심화 — 조직·tenant·서비스·특권·공격·감사·규제",
+   "summary": "한 시스템을 여러 고객사(tenant)가 함께 쓸 때 \"이 사람은 어느 고객사 소속이고, 그 안에서 어느 자원(펀드)까지 보나\" 를 tenant 식별·데이터 격리(DB 별·schema 별·row+RLS·row 앱 필터)·사용자–tenant 관계(1:1·N:M)·자원 범위 두 층(tenant × 자원 ∩ 사용자 × 자원)·집계 값 권한·tenant 전환·관리자 위임·noisy neighbor 까지 다룬다. 결론: B2B 포털은 \"공유 DB 의 row 격리 + 모든 tenant 소유 table 에 tenant_id + 앱의 한 함수 access_scope 로 범위 계산 + PostgreSQL RLS 를 두 번째 벽으로\" 가 기본값이고, 자원 범위는 기본 빈 범위(deny by default)에서 tenant 연결과 사람 배정의 교집합으로 계산하며, 합계는 그 범위 안에서 사람마다 다시 계산한다.",
+   "items": [
+    {
+     "id": "AUT23#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "AUT23#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "AUT23#원리",
+     "title": "원리"
+    },
+    {
+     "id": "AUT23#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "AUT23#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "AUT23#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "AUT23#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "AUT23#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "AUT23#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "AUT23#LP 포털·어드민 적용",
+     "title": "적용 사례 — B2B 포털·어드민"
+    },
+    {
+     "id": "AUT23#다른 장 연결",
+     "title": "다른 장 연결"
+    },
+    {
+     "id": "AUT23#더 깊이",
+     "title": "더 깊이"
+    }
+   ],
+   "cards": [
+    {
+     "id": "AUT23-Q01",
+     "q": "client 가 X-Tenant-Id header 를 보내는 API 에서 반드시 붙어야 하는 검사는 무엇이고, 왜 header 값만으로는 안 되나?",
+     "a": "서버가 인증한 사용자가 그 tenant 의 active member(또는 그 tenant 에 대한 서비스 인가 보유)인지 확인해야 한다. header 는 client 가 마음대로 바꾸는 값이라 \"고르는 값(selector)\" 일 뿐 인가 근거가 아니다(OWASP Multi-Tenant §3.1)."
+    },
+    {
+     "id": "AUT23-Q02",
+     "q": "PostgreSQL 에서 RLS 를 켰는데 앱이 모든 row 를 본다. 가능한 원인 세 가지는?",
+     "a": "앱이 superuser 또는 BYPASSRLS role 로 접속, 앱 role 이 table owner 인데 FORCE ROW LEVEL SECURITY 를 안 함, view 를 통해 읽는데 view owner 가 우회 role 이고 security_invoker 가 꺼져 있음."
+    },
+    {
+     "id": "AUT23-Q03",
+     "q": "tenant 값을 SET app.tenant_id = … 로 넣었더니 가끔 다른 회사 데이터가 보였다. 원인과 고침은?",
+     "a": "session 수준 설정이 connection pool 에서 다음 request 로 남았다. set_config('app.tenant_id', …, true)(= SET LOCAL)로 transaction 안에서만 쓰고, 문맥이 없으면 row 가 안 나오게(fail closed) policy 를 짠다."
+    },
+    {
+     "id": "AUT23-Q04",
+     "q": "두 층 범위에서 \"사람 배정 저장 때 바깥 경계 안인지 검사\" 만으로 부족한 이유는?",
+     "a": "저장 뒤 바깥 연결이 끝나도(valid_to 지남) 사람 배정 row 는 남는다. 계산 때 매번 교집합을 해야 저장 순서·기간과 무관하게 맞다."
+    },
+    {
+     "id": "AUT23-Q05",
+     "q": "같은 회사 담당자 둘의 대시보드 \"총액\" 이 같다면 무엇이 의심되나?",
+     "a": "범위 계산 없이 회사 단위로 미리 계산한 합계를 쓰고 있을 수 있다. 사람마다 범위가 다르면 합계도 달라야 한다(같을 수는 있지만 같은 값이 \"같은 계산\" 에서 나왔는지 확인)."
+    },
+    {
+     "id": "AUT23-Q06",
+     "q": "펀드 총액과 내 몫을 둘 다 보여 주면 생길 수 있는 문제와 대책은?",
+     "a": "펀드 참여 LP 가 둘뿐이면 총액 − 내 몫 = 상대 몫이 계산된다(추론). 작은 그룹의 전체 값 표시를 업무 정책으로 정하거나 범위를 내 몫만으로 한다."
+    },
+    {
+     "id": "AUT23-Q07",
+     "q": "관리형 IdP 의 Organizations 기능을 쓰면 이 장에서 무엇이 해결되고 무엇이 남나?",
+     "a": "조직·member·초대·조직 역할·조직별 로그인 방식이 해결된다. 자원(펀드) 범위 배정·두 층 계산·데이터 격리(RLS)·집계 권한·교차 tenant 시험은 여전히 앱 몫이다."
+    },
+    {
+     "id": "AUT23-Q08",
+     "q": "1:1 관계인데도 user.tenant_id column 대신 user_tenant table + unique 를 권하는 이유는?",
+     "a": "N:M 으로 넓힐 때 unique 하나만 지우면 되고, 범위 함수 입력·membership 상태·역할을 처음부터 같은 자리에 둘 수 있다. column 방식은 넓힐 때 데이터 이전과 코드 변경이 크다."
+    },
+    {
+     "id": "AUT23-Q09",
+     "q": "tenant RLS policy 를 AS RESTRICTIVE 로 두는 이유는?",
+     "a": "PERMISSIVE policy 는 OR 로 묶여, 나중에 누가 넓은 PERMISSIVE policy 를 더하면 tenant 조건이 무력해진다. RESTRICTIVE 는 AND 로 묶여 항상 통과해야 한다."
+    }
+   ]
+  },
+  {
+   "id": "AUT24",
+   "title": "AUT24 엔터프라이즈 프로비저닝·디렉터리 — SCIM·JIT·LDAP·AD",
+   "part": "3부 심화 — 조직·tenant·서비스·특권·공격·감사·규제",
+   "summary": "이 장은 \"회사 디렉터리(조직도·HR)에 있는 사람을 앱의 사용자 table 에 언제·어떻게 만들고, 바꾸고, 끄는가\" 를 답한다 — 수동 등록 · JIT(첫 SSO 로그인 때 생성) · 주기 batch 동기화 · SCIM push · 이벤트(SET) 다섯 방법과 그 밑의 디렉터리(LDAP·Active Directory·Kerberos)를 비교한다. 결론: 만들기는 JIT 로 충분할 때가 많지만 끄기(디프로비저닝)는 JIT 가 못 하므로 원천 디렉터리를 주기적으로 읽는 batch 동기화나 SCIM push 를 반드시 하나 두고, 앱 table 은 원천의 변하지 않는 ID(SCIM externalId·AD objectGUID·사번)로 묶으며, 원천이 사라졌다고 바로 지우지 말고 active=false(비활성) → 유예 → 삭제 순서로 간다. 원천이 표준 프로토콜을 안 주는 사내 조직도라면 DirectorySource 어댑터 + 하루 1회 이상 batch + 대량 비활성 안전장치가 현실적인 기본값이다.",
+   "items": [
+    {
+     "id": "AUT24#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "AUT24#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "AUT24#원리",
+     "title": "원리"
+    },
+    {
+     "id": "AUT24#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "AUT24#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "AUT24#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "AUT24#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "AUT24#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "AUT24#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "AUT24#LP 포털·어드민 적용",
+     "title": "적용 사례 — B2B 포털·어드민"
+    },
+    {
+     "id": "AUT24#다른 장 연결",
+     "title": "다른 장 연결"
+    },
+    {
+     "id": "AUT24#더 깊이",
+     "title": "더 깊이"
+    }
+   ],
+   "cards": [
+    {
+     "id": "AUT24-Q01",
+     "q": "JIT 프로비저닝만으로 부족한 이유 두 가지는?",
+     "a": "① 퇴사자는 다시 로그인하지 않으니 앱이 퇴사를 모른다(디프로비저닝 없음). ② 로그인한 적 없는 사람을 미리 지정(승인자·결재 배정)할 수 없다. 덤으로 부서 이동이 다음 로그인까지 반영되지 않는다."
+    },
+    {
+     "id": "AUT24-Q02",
+     "q": "SCIM id 와 externalId 는 누가 만들고, 매칭에는 무엇을 쓰나?",
+     "a": "id 는 service provider(앱)가 발급하는 변하지 않는 ID, externalId 는 client(IdP)가 주는 값이고 server 는 유일성을 강제하지 않는다(RFC 7643 §3.1). IdP 가 원천 ID 를 externalId 로 주면 매칭 열쇠로 좋고, userName·email 은 바뀔 수 있어 열쇠로 쓰지 않는다."
+    },
+    {
+     "id": "AUT24-Q03",
+     "q": "batch 동기화에서 원천 API 가 page 3 에서 실패했다. 무엇을 해야 하나?",
+     "a": "아무것도 반영하지 않고 회차를 failed 로 끝낸다. 읽은 page 만으로 diff 하면 나머지 사람 전원이 \"사라짐\" 으로 보여 대량 비활성 사고가 난다. 완전성 검사·비활성 한도는 이런 경우를 막는 두 번째 줄이다."
+    },
+    {
+     "id": "AUT24-Q04",
+     "q": "Okta 고객사와 Entra 고객사의 디프로비저닝 차이는?",
+     "a": "Okta 는 사용자에게 DELETE 를 보내지 않고 active=false 로만 끈다. Entra 는 범위 밖·soft delete 를 비활성으로 보내고, soft delete 30일 뒤(영구 삭제 때) DELETE 를 보낸다. 그래서 앱은 두 경우 모두 처리하고 파기는 자기 보관 정책으로도 할 수 있어야 한다."
+    },
+    {
+     "id": "AUT24-Q05",
+     "q": "AD 사용자를 비활성했는데 그 사람이 몇 시간 동안 파일 서버를 계속 썼다. 왜인가?",
+     "a": "Kerberos 는 이미 발급된 ticket 이 만료까지 유효하다. AD 기본 TGT 최대 수명은 10시간이고, KDC 는 새 ticket 만 거부한다. 앱 session 도 같은 문제가 있으므로 디프로비저닝 훅으로 앱 session·refresh token 을 따로 끊어야 한다."
+    },
+    {
+     "id": "AUT24-Q06",
+     "q": "새로 만드는 웹 앱이 AD 비밀번호를 LDAP bind 로 직접 검사하는 설계의 문제는?",
+     "a": "앱이 비밀번호를 직접 받아 유출·로그 노출 위험이 생기고, MFA·피싱 저항을 붙이기 어렵고, 앱마다 같은 일을 반복한다. 브로커(Keycloak)·클라우드 IdP 가 LDAP·Kerberos 를 맡고 앱은 OIDC·SAML 로 받는 편이 낫다. 앱이 LDAP 를 쓰더라도 조직도 읽기(프로비저닝)에만 쓴다."
+    },
+    {
+     "id": "AUT24-Q07",
+     "q": "동기화가 매일 밤 관리자가 준 역할을 지운다. 설계에서 무엇이 빠졌나?",
+     "a": "원천 값과 앱 값을 같은 column·table 에 섞었다. 원천 적재본(directory_person)과 앱 계정·역할(app_user·역할 table)을 나누고, 동기화는 표시 속성만 갱신하며 provisioning_source='manual' row 는 건드리지 않아야 한다."
+    },
+    {
+     "id": "AUT24-Q08",
+     "q": "RFC 9967 의 \"notice\" 이벤트와 \"full\" 이벤트는 무엇이 다르고, 왜 notice 가 있나?",
+     "a": "full 은 자원 데이터를 담고, notice 는 바뀐 속성 이름만 담는다. notice 를 받은 쪽은 원천에서 다시 읽는다 — 이벤트에 개인정보를 덜 싣고, 순서가 뒤바뀌어도 최신 상태를 읽게 하는 설계다."
+    },
+    {
+     "id": "AUT24-Q09",
+     "q": "LP 포털 어드민에서 SCIM 을 바로 도입하지 않는 이유는?",
+     "a": "사내 SSO 가 SCIM 을 보내 주는 IdP 가 아니다. push 해 줄 주체가 없으니 앱이 조직도를 읽는 batch(방법 3)가 현실적이고, 베타는 수동 + JIT + 주기 access review 로 간다."
+    }
+   ]
+  },
+  {
+   "id": "AUT25",
+   "title": "AUT25 서비스 간 인증 — API key·mTLS·workload identity",
+   "part": "3부 심화 — 조직·tenant·서비스·특권·공격·감사·규제",
+   "summary": "이 장은 사람이 아닌 주체(서비스·batch·CI)가 다른 서비스를 부를 때 \"누가 불렀나\" 를 증명하는 일곱 방법 — API key · HMAC 서명 request · mTLS · client credentials(secret) · client credentials(인증서/JWT assertion) · workload identity · IP allowlist — 을 원리·장단점·구현까지 비교한다. 결론: 방향은 \"오래 사는 공유 비밀(key·secret)\" 에서 \"플랫폼이 증명해 주는 짧은 수명 credential(workload identity)\" 로 가는 것이고, 지금 당장 API key 를 쓰더라도 호출자별 발급·prefix·hash 저장·scope·회전·last_used 기록을 갖추면 실무에 충분하다. IP allowlist 는 인증이 아니라 경로 제한이므로 다른 방법 위에 겹치는 보조로만 쓴다.",
+   "items": [
+    {
+     "id": "AUT25#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "AUT25#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "AUT25#원리",
+     "title": "원리"
+    },
+    {
+     "id": "AUT25#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "AUT25#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "AUT25#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "AUT25#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "AUT25#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "AUT25#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "AUT25#LP 포털·어드민 적용",
+     "title": "적용 사례 — B2B 포털·어드민"
+    },
+    {
+     "id": "AUT25#다른 장 연결",
+     "title": "다른 장 연결"
+    },
+    {
+     "id": "AUT25#더 깊이",
+     "title": "더 깊이"
+    }
+   ],
+   "cards": [
+    {
+     "id": "AUT25-Q01",
+     "q": "API key 와 OAuth client credentials(secret) 은 둘 다 공유 비밀인데, 대상 API 쪽 위험은 무엇이 다른가?",
+     "a": "API key 는 대상 API 에 매 request 마다 장기 비밀이 간다. client credentials 는 장기 secret 을 AS 에만 보내고 대상 API 에는 짧은 access token(aud·scope·exp)만 간다 — 대상 API 의 로그·메모리가 새도 피해 창이 token 수명으로 줄고, 범위가 표준 claim 으로 묶인다."
+    },
+    {
+     "id": "AUT25-Q02",
+     "q": "무작위 256비트 API key 를 SHA-256 으로만 저장해도 되는 이유와, 그 논리가 깨지는 조건은?",
+     "a": "느린 hash 는 추측 후보가 적은 값의 대입을 늦추는 장치인데, 2^256 공간은 대입 자체가 불가능하다. key 가 짧아지거나 사람이 고른 값이 되면 깨진다. DB 쓰기 탈취(가짜 hash 삽입)는 어떤 hash 로도 못 막는다."
+    },
+    {
+     "id": "AUT25-Q03",
+     "q": "private_key_jwt 의 client assertion 에서 aud 에는 무엇을 넣고, 왜 중요한가?",
+     "a": "AS 자신(token endpoint URL 을 써도 됨, RFC 7523 §3). 다른 AS·다른 용도로 만든 assertion 이 재사용되지 않게 하는 장치이고, 없거나 다르면 AS 는 거부해야 한다(MUST)."
+    },
+    {
+     "id": "AUT25-Q04",
+     "q": "M365 인증서 방식에서 인증서를 권한별로 따로 받지 않는 이유는? thumbprint 는 무엇을 고르나?",
+     "a": "권한은 앱 등록에 붙고 인증서는 \"그 앱이 맞다\" 는 증명 수단이다. 한 앱에 여러 인증서(회전용)를 올릴 수 있고, thumbprint(x5t·x5t#S256)는 AS 가 그중 어느 공개 키로 서명을 확인할지 고르는 공개 식별자다."
+    },
+    {
+     "id": "AUT25-Q05",
+     "q": "mTLS 를 load balancer 에서 끝내고 client 인증서 정보를 header 로 넘길 때 반드시 해야 할 두 가지는?",
+     "a": "① proxy 가 외부에서 들어온 같은 이름의 header 를 지우고 자기 값만 넣는다. ② 대상 서비스가 proxy 를 거치지 않는 경로로 직접 불리지 않게 막는다(네트워크 정책·메시 STRICT). 둘 중 하나라도 빠지면 header 위조로 사칭된다."
+    },
+    {
+     "id": "AUT25-Q06",
+     "q": "IP allowlist 가 증명하는 것과 못 하는 것은? 그래도 쓰는 이유는?",
+     "a": "출발지 경로(그 IP·그 NAT 뒤)만 증명하고 주체(어느 프로그램)는 못 한다. 접속 시도 자체를 줄이는 공격면 축소 효과가 있어 ID 기반 인증 위의 보조층으로 쓴다."
+    },
+    {
+     "id": "AUT25-Q07",
+     "q": "GitHub Actions 에서 AWS role 을 OIDC 로 받을 때 가장 흔한 설정 실수와 결과는?",
+     "a": "trust policy 에 sub(저장소·브랜치) 조건이 없거나 너무 넓은 와일드카드 — 같은 발급자의 다른 저장소·브랜치 job 이 그 role 을 받아 운영 자원에 접근한다."
+    },
+    {
+     "id": "AUT25-Q08",
+     "q": "AWS API Gateway 의 API key 로 내부 API 를 보호하면 안 되는 이유는?",
+     "a": "AWS 문서가 인증·인가용으로 쓰지 말라고 명시한다 — 한 usage plan 의 key 로 그 plan 의 모든 API 에 접근할 수 있고, key 는 계량·throttling(그것도 best-effort)을 위한 식별자다. 인증은 IAM·Lambda authorizer·Cognito 로."
+    },
+    {
+     "id": "AUT25-Q09",
+     "q": "workload identity 가 \"비밀이 없다\" 고 할 때, 그래도 남는 신뢰 대상은 무엇인가?",
+     "a": "플랫폼의 attestation — 클라우드 메타데이터 서비스·hypervisor 서명, kubelet·API server 의 service account token 서명 키, CI 의 OIDC 서명 키. 이들이 침해되거나 신뢰 설정(조건)이 넓으면 뚫린다."
+    },
+    {
+     "id": "AUT25-Q10",
+     "q": "포털 서버가 사용자 U 를 대신해 내부 서비스를 부를 때, 내부 서비스가 포털을 믿는 것만으로 부족한 이유는?",
+     "a": "포털이 침해되면 아무 U 나 사칭해 대량 조회할 수 있다. 내부 서비스는 \"포털 principal 이 낼 수 있는 사용자·자원 범위\" 를 다시 검사하거나, token exchange 처럼 사용자 증거가 담긴 token 을 받아 검증해야 한다."
+    }
+   ]
+  },
+  {
+   "id": "AUT26",
+   "title": "AUT26 관리자·특권 접근",
+   "part": "3부 심화 — 조직·tenant·서비스·특권·공격·감사·규제",
+   "summary": "관리자(어드민) 계정은 한 번 뚫리면 모든 사용자 데이터와 권한이 함께 넘어가므로, \"누구에게 상시로 주지 않고(JIT·승인형) · 더 강하게 확인하고(phishing-resistant MFA·step-up·짧은 session) · 다른 사람으로 보이는 기능은 읽기 전용 미리보기로 제한하고 · 모든 행동을 actor 기준으로 남기는\" 네 겹으로 다룬다는 것이 이 장의 결론이다. LP 포털 어드민 같은 내부 어드민은 \"내부망 전용 + 사내 SSO\" 만으로 끝내지 말고, admin 같은 고위험 역할은 eligible(필요할 때 활성화) 로 두고, 미리보기(R27)는 실제 로그인 대행이 아니라 대상 사용자의 권한으로 계산한 읽기 전용 렌더로 만들며, break-glass 계정 2개를 SSO 장애 대비로 따로 둔다.",
+   "items": [
+    {
+     "id": "AUT26#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "AUT26#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "AUT26#원리",
+     "title": "원리"
+    },
+    {
+     "id": "AUT26#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "AUT26#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "AUT26#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "AUT26#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "AUT26#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "AUT26#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "AUT26#LP 포털·어드민 적용",
+     "title": "적용 사례 — B2B 포털·어드민"
+    },
+    {
+     "id": "AUT26#다른 장 연결",
+     "title": "다른 장 연결"
+    },
+    {
+     "id": "AUT26#더 깊이",
+     "title": "더 깊이"
+    }
+   ],
+   "cards": [
+    {
+     "id": "AUT26-Q01",
+     "q": "내부망 전용 어드민이면 MFA·step-up 을 생략해도 되나?",
+     "a": "안 된다. 망 분리는 인터넷 전체로부터의 공격 표면만 줄이고, 내부 감염 PC·내부자·VPN 자격 증명 탈취는 못 막는다. OWASP ASVS 5.0 8.4.2 는 관리 인터페이스에서 network location 만으로 인가하지 말라고 한다."
+    },
+    {
+     "id": "AUT26-Q02",
+     "q": "eligible 과 active 배정의 권한 크기는 다른가?",
+     "a": "같다. 차이는 \"쓰기 전에 활성화(사유·MFA·승인)가 필요한가\" 와 노출 시간이다(Entra PIM 용어 설명). JIT 는 권한 크기가 아니라 노출 시간을 줄인다."
+    },
+    {
+     "id": "AUT26-Q03",
+     "q": "R27 미리보기를 \"대상 사용자로 실제 로그인\" 으로 만들면 생기는 문제 세 가지는?",
+     "a": "① 쓰기가 대상 사용자 이름으로 남음 ② 대상 사용자 session 이 실제로 생겨 탈취 대상이 됨 ③ 대상 사용자의 MFA·step-up 을 관리자가 건너뜀(+ 감사에서 actor 를 놓치기 쉬움). 그래서 관리자 session 은 그대로 두고 대상 권한으로 계산한 읽기 전용 렌더(A3)를 쓴다."
+    },
+    {
+     "id": "AUT26-Q04",
+     "q": "RFC 9470 에서 resource server 가 \"더 최근 인증이 필요하다\" 를 알리는 방법은?",
+     "a": "WWW-Authenticate header 에 error=\"insufficient_user_authentication\" 와 max_age(초) 또는 acr_values 를 넣어 돌려보낸다. client 는 그 값으로 authorization request 를 다시 보내 새 token 을 받는다."
+    },
+    {
+     "id": "AUT26-Q05",
+     "q": "refresh token 으로 access token 을 갱신하면 auth_time 이 갱신되나?",
+     "a": "아니다. RFC 9470 §6.1: acr·auth_time 은 인증 시점 값이며 갱신 때 바뀌지 않는다. 서버 session 에서도 authTime 을 sliding 갱신과 분리해야 step-up 이 의미 있다."
+    },
+    {
+     "id": "AUT26-Q06",
+     "q": "break-glass 계정을 SSO·Conditional Access 에서 제외하는 이유와, 그 대신 지키는 수단은?",
+     "a": "SSO·정책 장애가 바로 그 계정이 필요한 상황이기 때문이다. 대신 평소 관리자와 다른 phishing-resistant 방식(FIDO2·인증서), 금고 분리 보관, 사용 즉시 경보·사후 검토, 90일 시험으로 지킨다(Microsoft emergency access 권고)."
+    },
+    {
+     "id": "AUT26-Q07",
+     "q": "관리자가 \"사용자의 임시 비밀번호를 정해 알려 주는\" 기능이 왜 문제인가?",
+     "a": "관리자가 그 비밀번호로 사용자로 로그인할 수 있어 감사 없는 impersonation 우회로가 되고, 비밀번호가 사람 손을 거친다. 재설정 링크를 사용자 본인 채널로만 보낸다."
+    },
+    {
+     "id": "AUT26-Q08",
+     "q": "Q14 — 운영 AWS 에 IAM user 대신 SSO 로그인을 요구하는 핵심 이유는?",
+     "a": "사람이 장기 비밀(비밀번호·access key)을 갖지 않게 하고, 로그인마다 IdP 에서 MFA·퇴사 처리를 일괄 적용하며, 역할을 빌려 받은 임시 자격 증명(1~12시간)으로만 일하게 하려는 것. AWS IAM best practices 의 첫 항목이다."
+    },
+    {
+     "id": "AUT26-Q09",
+     "q": "감사 로그를 앱 admin 이 지울 수 없어야 하는 근거는?",
+     "a": "관리자 계정 탈취·내부자가 흔적을 지우면 감사가 무의미해진다. NIST SP 800-53 AU-9(4) 는 감사 기능 관리를 특권 사용자 중 일부로 제한하라고 한다."
+    }
+   ]
+  },
+  {
+   "id": "AUT27",
+   "title": "AUT27 위협 모델과 공격 기법",
+   "part": "3부 심화 — 조직·tenant·서비스·특권·공격·감사·규제",
+   "summary": "이 장은 인증·계정 기능을 노리는 공격(추측·피싱·AitM·session 탈취·OAuth 흐름 조작·MFA 우회·복구 흐름 악용·내부자·라이브러리 취약점)이 어디를 어떻게 뚫는지와, 그것을 빠짐없이 찾는 위협 모델링 방법(STRIDE·attack tree·LINDDUN·PASTA·abuse case·ATT&CK 대응)을 비교한다. 핵심 결론: 공격자의 목표는 결국 \"남의 session 하나\" 이므로 위협 모델은 자산(비밀·session·복구 경로·신뢰 관계) 단위로 세우고, 공통 계정 모듈은 STRIDE 로 빠짐없이 훑은 뒤 계정 탈취(ATO)만 attack tree 로 깊게 파는 조합이 비용 대비 가장 낫다. 막는 방법의 상세(rate limit·봇 탐지·위험 기반 인증)는 AUT28 방어 — rate limit·봇 탐지·위험 기반 인증 이 맡는다.",
+   "items": [
+    {
+     "id": "AUT27#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "AUT27#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "AUT27#원리",
+     "title": "원리"
+    },
+    {
+     "id": "AUT27#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "AUT27#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "AUT27#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "AUT27#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "AUT27#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "AUT27#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "AUT27#LP 포털·어드민 적용",
+     "title": "적용 사례 — B2B 포털·어드민"
+    },
+    {
+     "id": "AUT27#다른 장 연결",
+     "title": "다른 장 연결"
+    },
+    {
+     "id": "AUT27#더 깊이",
+     "title": "더 깊이"
+    }
+   ],
+   "cards": [
+    {
+     "id": "AUT27-Q01",
+     "q": "password spraying 이 \"5회 실패 시 계정 잠금\" 을 지나가는 이유와, 탐지 단위를 무엇으로 바꿔야 하는지?",
+     "a": "spraying 은 계정마다 1~3회만 흔한 비밀번호를 넣으므로 계정 단위 실패 카운트가 차지 않는다(ATT&CK T1110.003). 탐지는 IP·ASN·전역 실패율·\"한 출발지가 서로 다른 id 몇 개에 실패했나\" 로 해야 한다 — 이 장 auth_event.login_id_hash 와 spraying 질의."
+    },
+    {
+     "id": "AUT27-Q02",
+     "q": "TOTP 를 켠 계정이 AitM 피싱에 뚫렸다. 무엇을 훔쳤고, 어느 대책이 이 가지를 자르나?",
+     "a": "MFA 를 통과한 뒤 발급된 session cookie 를 중계 서버가 챙겼다(Microsoft 2022-07-12). TOTP 는 도메인을 확인하지 않는다. origin 에 묶인 WebAuthn·passkey 가 로그인 단계를, session 바인딩(DPoP·DBSC)과 이상 위치 탐지가 탈취 뒤 사용을 자른다."
+    },
+    {
+     "id": "AUT27-Q03",
+     "q": "session fixation 과 session hijacking 의 차이, 그리고 fixation 을 막는 코드 지점은?",
+     "a": "hijacking 은 이미 있는 피해자 session 을 훔치는 것, fixation 은 공격자가 아는 id 를 피해자에게 심어 두고 피해자가 그 id 로 로그인하게 하는 것. 로그인 성공·권한 상승 때 새 session id 발급 + 옛 id 폐기(completeLogin) 가 막는다."
+    },
+    {
+     "id": "AUT27-Q04",
+     "q": "login CSRF 는 피해자 계정을 빼앗지 않는데 왜 위험한가?",
+     "a": "피해자를 공격자 계정으로 로그인시켜, 피해자가 입력하는 개인정보·문서·결제 정보를 공격자 계정에 쌓게 한다(Barth 외 2008). 로그인 form CSRF token·Origin 검사, OAuth 는 state·PKCE 로 막는다."
+    },
+    {
+     "id": "AUT27-Q05",
+     "q": "RFC 9700 이 mix-up 방어를 언제 REQUIRED 로 하고, 무엇으로 막나?",
+     "a": "client 가 authorization server 둘 이상과 통신할 때(§2.1). AS 가 response 에 넣는 iss(RFC 9207)를 확인하는 것이 먼저(SHOULD)이고, 그것을 못 쓸 때만 AS 마다 다른 redirect URI 로 response 가 어느 AS 에서 왔는지 구분한다(MAY, §2.1·§4.4.2)."
+    },
+    {
+     "id": "AUT27-Q06",
+     "q": "재설정 메일 링크를 req.get(\"host\") 로 만들면 어떤 공격이 되나?",
+     "a": "공격자가 Host: evil.example 로 피해자 email 의 재설정을 요청하면 피해자 메일에 공격자 도메인 링크가 간다. 피해자가 누르면 token 이 공격자 서버로 간다(Host header poisoning, CWE-640). 기준 URL 을 설정값으로 고정한다."
+    },
+    {
+     "id": "AUT27-Q07",
+     "q": "STRIDE 와 attack tree 를 같이 쓰는 이유는?",
+     "a": "STRIDE 는 DFD 요소마다 위협을 빠짐없이 훑지만 여러 단계 공격 경로를 못 보고, attack tree 는 한 목표의 경로·가장 싼 길을 보지만 고르지 않은 목표는 빠뜨린다. 넓게(STRIDE) + 깊게(ATO attack tree)로 서로 메운다."
+    },
+    {
+     "id": "AUT27-Q08",
+     "q": "\"관리형 IdP 를 쓰니 위협 모델이 필요 없다\" 가 틀린 이유 세 가지는?",
+     "a": "① 앱 쪽 open redirect·session fixation·CSRF 는 앱이 만든다 ② 복구 흐름·어드민 대리 로그인 같은 우리 화면은 IdP 가 모른다 ③ IdP 자체도 공격 대상이다(Okta 2023 지원 시스템 사고, 2024 bcrypt 버그)."
+    },
+    {
+     "id": "AUT27-Q09",
+     "q": "NIST SP 800-63B-4 가 SMS OTP 를 금지했나?",
+     "a": "금지가 아니라 restricted 다(§3.1.3.3). 쓰려면 §3.2.9 Restricted Authenticators 조건 — CSP 가 제한 없는 대안 authenticator 를 하나 이상 제공하고(SHALL), 위험과 대안을 의미 있게 고지하고, 위험 평가에 넣고, 나중에 못 쓰게 될 때의 이전 계획을 세움 — 을 지켜야 하고, RP 가 위험을 받아들일 수 없다고 보면 쓰지 않는다(SHALL NOT). \"금지\" 로 바꿔 적으면 틀린다."
+    }
+   ]
+  },
+  {
+   "id": "AUT28",
+   "title": "AUT28 방어 — rate limit·봇 탐지·위험 기반 인증",
+   "part": "3부 심화 — 조직·tenant·서비스·특권·공격·감사·규제",
+   "summary": "이 장은 로그인·가입·재설정 endpoint 를 자동화 공격(brute force·password spraying·credential stuffing·가짜 가입)에서 지키는 방법 — rate limit(알고리즘·key·위치), 점진 지연, 봇 challenge(CAPTCHA·Turnstile·Private Access Tokens), 기기 지문, 위험 기반 인증, 침해 자격 증명 감시, 로그인 알림, WAF, 이상 탐지와 대응 자동화 — 을 방법별로 비교하고 어떻게 겹쳐 쓰는지 답한다. 핵심 결론: 하나의 장치로는 못 막으므로 \"edge 의 IP rate limit → 앱의 계정·IP 단위 counter 와 점진 지연 → 유출 비밀번호 대조 → 위험 신호가 있을 때만 challenge·step-up MFA → 사용자 알림·운영 경보\" 를 층으로 쌓고, 사용자가 적은 B2B 포털이면 관리자 MFA 강제와 단순 규칙 기반 위험 점수로 충분하며 기기 지문·봇 점수 서비스는 개인정보·외부 전송 비용을 따져 나중에 붙인다.",
+   "items": [
+    {
+     "id": "AUT28#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "AUT28#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "AUT28#원리",
+     "title": "원리"
+    },
+    {
+     "id": "AUT28#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "AUT28#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "AUT28#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "AUT28#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "AUT28#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "AUT28#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "AUT28#LP 포털·어드민 적용",
+     "title": "적용 사례 — B2B 포털·어드민"
+    },
+    {
+     "id": "AUT28#다른 장 연결",
+     "title": "다른 장 연결"
+    }
+   ],
+   "cards": [
+    {
+     "id": "AUT28-Q01",
+     "q": "계정 잠금은 credential stuffing 을 왜 거의 못 막나? stuffing 에 듣는 방어 세 가지는?",
+     "a": "stuffing 은 유출된 (아이디, 비밀번호) 쌍을 계정당 한 번만 시도하고, 그 시도가 \"맞는\" 경우가 많다. 실패 횟수를 세는 장치는 반응할 기회가 없다. 듣는 것: MFA, 비밀번호가 맞은 뒤의 위험 판단(새 기기·위치·평판 → step-up), 유출 자격 증명 대조."
+    },
+    {
+     "id": "AUT28-Q02",
+     "q": "NIST SP 800-63B-4 §3.2.2 에서 SHALL 인 것과 MAY 인 것을 구분하라.",
+     "a": "SHALL: 특정 authenticator 의 연속 실패를 100회 이하로 제한. MAY: 더 낮은 한도, 봇 탐지 challenge, 점점 늘어나는 대기 시간, 그 밖의 위험 기반·적응형 인증. SHOULD: 성공 시 이전 실패 무시·counter 초기화."
+    },
+    {
+     "id": "AUT28-Q03",
+     "q": "앱이 load balancer 뒤에 있다. rate limit 의 IP key 를 어떻게 얻어야 하나? 틀리면 무슨 일이 생기나?",
+     "a": "X-Forwarded-For 를 믿는 proxy 수만큼 오른쪽에서 센 값을 쓴다(맨 왼쪽은 client 가 마음대로 씀). 틀리면 공격자가 header 하나로 매 request 의 IP 를 바꿔 IP 한도가 무력화된다. IPv6 는 /64 로 묶는다."
+    },
+    {
+     "id": "AUT28-Q04",
+     "q": "로그인 handler 에서 rate limit 확인을 비밀번호 hash 확인 앞에 두는 이유는?",
+     "a": "Argon2id·bcrypt 같은 비밀번호 hash 는 일부러 비싼 연산이라, 한도 확인이 뒤에 있으면 막힐 request 도 hash 를 계산해 공격자가 서버 CPU 를 소모시키는 DoS 가 된다."
+    },
+    {
+     "id": "AUT28-Q05",
+     "q": "Turnstile 위젯을 화면에 넣었는데 봇이 그대로 로그인한다. 가장 흔한 원인은?",
+     "a": "서버 쪽 siteverify 검증을 안 했다. 위젯만으로는 보호가 없고, 서버가 token 을 발급처에 1회 검증해야 한다(token 300초 유효·1회용). action 이름 대조도 함께."
+    },
+    {
+     "id": "AUT28-Q06",
+     "q": "Private Access Tokens 는 CAPTCHA 를 완전히 대체할 수 있나?",
+     "a": "아니다. \"정상 기기 + 정상 계정\" 을 익명으로 증명할 뿐이고, 지원하지 않는 client 는 여전히 들어올 수 있어야 하므로 CAPTCHA 등은 fallback 으로 남는다. 기기 농장·사람 동원도 못 막는다. 앞단에서 challenge 를 생략하는 장치로 본다."
+    },
+    {
+     "id": "AUT28-Q07",
+     "q": "Freeman 외(NDSS 2016)의 위험 점수 아이디어를 한 문장으로? 한국 사용자에게 \"한국 IP\" 가 왜 신호가 약한가?",
+     "a": "\"이 특징값이 이 사용자의 과거 로그인에서 나올 확률\" 과 \"전체 모집단에서 나올 확률\" 의 비로 점수를 낸다. 한국 사용자 대부분이 한국 IP 이므로 그 값은 모집단에서 흔해 공격과 정상을 가르는 정보가 적다. 처음 보는 해외 호스팅 ASN 이 정보가 많다."
+    },
+    {
+     "id": "AUT28-Q08",
+     "q": "\"이 사용자가 전에 쓴 기기인가\" 를 판단할 때 기기 지문보다 기기 cookie 가 나은 이유 두 가지는?",
+     "a": "① 정확함 — 서명된 random id 라 충돌·위조가 없고 브라우저 업데이트로 바뀌지 않음 ② 개인정보 부담이 적음 — 추적 기술인 지문과 달리 로그인 성공 때 심는 우리 서비스 cookie 이고 사용자가 기기 목록에서 지울 수 있음. 단점은 cookie 를 지우면 새 기기로 보이는 것."
+    },
+    {
+     "id": "AUT28-Q09",
+     "q": "위험 점수 기반 차단을 새로 도입할 때 바로 enforce 하면 안 되는 이유와 올바른 순서는?",
+     "a": "기준값이 우리 사용자 분포에 맞는지 모르는 상태라 오탐으로 정상 사용자를 대량 차단할 수 있다. 그림자 모드(점수만 기록, 2주 이상 — Cognito 권고)로 분포·오탐을 본 뒤 step-up 부터 시행하고, 차단은 가장 높은 점수에만."
+    },
+    {
+     "id": "AUT28-Q10",
+     "q": "LP 포털 어드민에 \"3회 실패 시 잠금, 관리자 해제\" 대신 무엇을 권하나?",
+     "a": "(계정, IP) 쌍 counter 로 남의 잠금 DoS 를 줄이고, 계정 5회부터 점진 지연, 10회에 15분 임시 잠금 + 주인 알림 + 재설정으로 해제. 어드민은 MFA 강제가 잠금보다 훨씬 강한 방어다."
+    }
+   ]
+  },
+  {
+   "id": "AUT29",
+   "title": "AUT29 감사 로그와 보안 이벤트 공유",
+   "part": "3부 심화 — 조직·tenant·서비스·특권·공격·감사·규제",
+   "summary": "이 장은 계정·인증 시스템이 \"누가·언제·무엇을·어디서·어떤 결과로·왜\" 했는지를 어떻게 남기고(무엇을 남기고 무엇을 빼나), 그 기록을 어떻게 위변조로부터 지키고 얼마나 보존하며, 다른 서비스와 \"이 session 을 끊어라\" 같은 보안 이벤트를 어떻게 주고받는지(SET·Shared Signals·CAEP·RISC) 답한다. 핵심 결론: 감사 로그는 운영 로그·사용자 활동 이벤트와 저장소·보존 기간을 나눠, 업무 변경과 같은 transaction 의 append-only audit_log table 에 쓰고 hash chain + 외부 WORM 저장소(S3 Object Lock 등)에 주기적으로 chain 머리값을 고정하는 조합이 B2B 어드민의 기본값이며, 비밀번호·token·session ID 는 어떤 형태로도 남기지 않는다. 사용자에게는 실패 원인을 일반 문구 + 참조 번호로만 보이고 세부 사유는 감사 로그의 reason_code 로 남긴다.",
+   "items": [
+    {
+     "id": "AUT29#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "AUT29#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "AUT29#원리",
+     "title": "원리"
+    },
+    {
+     "id": "AUT29#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "AUT29#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "AUT29#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "AUT29#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "AUT29#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "AUT29#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "AUT29#LP 포털·어드민 적용",
+     "title": "적용 사례 — B2B 포털·어드민"
+    },
+    {
+     "id": "AUT29#다른 장 연결",
+     "title": "다른 장 연결"
+    }
+   ],
+   "cards": [
+    {
+     "id": "AUT29-Q01",
+     "q": "감사 로그·운영 로그·활동 이벤트를 한 저장소에 섞으면 생기는 문제 두 가지는?",
+     "a": "① 보존 기간이 한쪽에 묶인다 — 운영 로그 기간(수주)에 감사 기록이 사라지거나, 감사 기간(수년)에 활동 이벤트 개인정보가 너무 오래 남는다. ② 양이 수십 배 차이라 hash chain·검색·접근 통제 비용이 커지고, 운영 로그 열람자가 감사 수준 개인정보를 보게 된다."
+    },
+    {
+     "id": "AUT29-Q02",
+     "q": "hash chain 만으로 막을 수 없는 공격 두 가지와 그 대책은?",
+     "a": "끝부분 잘라 내기(truncation)와 DB 관리자의 전체 재계산. 둘 다 chain 머리값을 주기적으로 앱 밖(WORM 저장소·다른 계정·KMS 서명)에 고정해 대조해야 탐지된다. 고정 주기 안의 조작은 여전히 남는 위험이다."
+    },
+    {
+     "id": "AUT29-Q03",
+     "q": "감사 기록을 업무 변경과 같은 transaction 에 넣어야 하는 이유와, 외부 저장소로도 보내야 할 때의 방법은?",
+     "a": "반영됐는데 기록이 없거나, 기록은 있는데 반영이 rollback 된 상태를 없애기 위해서다. 외부로도 보내려면 같은 transaction 에서 outbox table 에 쓰고 relay 가 보내거나 CDC 로 읽는다(B4)."
+    },
+    {
+     "id": "AUT29-Q04",
+     "q": "S3 Object Lock 의 governance mode 와 compliance mode 차이, 그리고 개인정보 원문을 compliance mode 에 넣으면 안 되는 이유는?",
+     "a": "governance 는 s3:BypassGovernanceRetention 권한과 header 로 우회 가능, compliance 는 root 도 기간 중 삭제·단축 불가. 원문을 넣으면 파기 요구를 기간 동안 따를 수 없으므로 WORM 에는 hash·고정점만 둔다."
+    },
+    {
+     "id": "AUT29-Q05",
+     "q": "CAEP session-revoked SET 을 받은 Receiver 가 검사해야 할 항목은?",
+     "a": "JWS 서명(Transmitter jwks_uri, 허용 알고리즘 고정), iss·aud, typ = secevent+jwt, events 가 정확히 하나, exp 없음(ID token 혼동 방지), jti 중복. 통과하면 같은 transaction 에서 session 삭제와 감사 기록 후 202."
+    },
+    {
+     "id": "AUT29-Q06",
+     "q": "RISC sessions-revoked 이벤트를 새로 구현하면 안 되는 이유는?",
+     "a": "RISC 1.0 §2.11 에서 deprecated 이고, 새 구현은 CAEP session-revoked 를 써야 한다(MUST)."
+    },
+    {
+     "id": "AUT29-Q07",
+     "q": "Q07 처럼 \"왜 로그인이 실패했나\" 를 사용자가 물을 때, 화면과 서버 기록을 어떻게 나누나?",
+     "a": "화면: 일반 문구 + 참조 번호 + 다음 행동. 서버: reason_code(계정 없음·비밀번호 틀림·입장권 만료·복호화 실패 등)와 외부 IdP 코드·시각 차이를 감사 로그에. 계정 존재 여부를 드러내는 원인은 화면에 구분해 보이지 않는다(ASVS 5.0 16.5.1)."
+    },
+    {
+     "id": "AUT29-Q08",
+     "q": "관리형 IdP(Auth0·Okta·Entra) 로그만으로 국내 법정 보존 기간을 채울 수 있나?",
+     "a": "2026-11 확인 기준 최대 90일(Okta), Auth0 Enterprise 30일, Entra P1/P2 30일이라 1~3년 보존을 못 채운다. log stream·내보내기로 자기 저장소에 옮겨야 한다."
+    },
+    {
+     "id": "AUT29-Q09",
+     "q": "어드민 미리보기(R27) 중 문서 조회를 어떻게 기록해야 하나?",
+     "a": "행위자는 운영자, on_behalf_of 에 LP 담당자, 미리보기 session 표시. 감사에는 남기고 LP 활동 통계·마지막 로그인에는 반영하지 않는다(is_preview)."
+    },
+    {
+     "id": "AUT29-Q10",
+     "q": "seq 를 DB sequence 로 매기면 왜 검증이 오탐하나?",
+     "a": "rollback 된 transaction 도 sequence 값을 소비해 번호에 구멍이 생긴다. 검증 작업은 구멍을 삭제로 본다. chain 잠금 안에서 max+1 로 매긴다."
+    }
+   ]
+  },
+  {
+   "id": "AUT30",
+   "title": "AUT30 개인정보·규제와 계정 데이터",
+   "part": "3부 심화 — 조직·tenant·서비스·특권·공격·감사·규제",
+   "summary": "계정·인증 기능이 만드는 이메일·IP·로그인 기록·활동 이벤트는 모두 개인정보이고, 처리 근거는 동의가 아니라 계약 이행(개인정보 보호법 §15①4)·법령상 의무(§15①2)로 잡아 데이터 종류별 목적·보유 기간을 table 로 관리하면 된다. 계정 삭제는 소프트 삭제 → 유예 → 익명화로, 로그는 무작위 uuid(가명)만 남기고 법정 보존 기록(접속기록 1~2년·권한 기록 3년)은 분리 보관 뒤 파기한다. 정할 것은 포털 기록이 운용사 업무 자료(자본시장법 시행령 §62 3~10년·금소법 시행령 §26 원칙 10년)에 들어가는지이고 준법감시 확인이 필요하다 — 이 장은 법률 자문이 아니다.",
+   "items": [
+    {
+     "id": "AUT30#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "AUT30#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "AUT30#원리",
+     "title": "원리"
+    },
+    {
+     "id": "AUT30#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "AUT30#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "AUT30#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "AUT30#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "AUT30#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "AUT30#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "AUT30#LP 포털·어드민 적용",
+     "title": "적용 사례 — B2B 포털·어드민"
+    },
+    {
+     "id": "AUT30#다른 장 연결",
+     "title": "다른 장 연결"
+    },
+    {
+     "id": "AUT30#더 깊이",
+     "title": "더 깊이"
+    }
+   ],
+   "cards": [
+    {
+     "id": "AUT30-Q01",
+     "q": "사용자 id 로만 남긴 로그인 기록은 개인정보인가?",
+     "a": "예. 계정 table 과 쉽게 결합해 사람을 알아볼 수 있으므로 개인정보(§2 1호 나목)이고, 정확히는 가명정보에 가깝다. 계정 row 의 식별 column 을 익명화하고 IP 같은 준식별자도 일반화해야 비로소 익명에 가까워진다."
+    },
+    {
+     "id": "AUT30-Q02",
+     "q": "계정 이메일 수집의 처리 근거로 \"동의\" 가 어색한 이유는?",
+     "a": "이메일 없이는 로그인·초대가 안 되므로 서비스 계약 이행에 필수다. 동의는 철회할 수 있어야 하는데, 철회하면 서비스가 멈추는 정보를 동의로 받으면 \"동의를 강요\" 하는 모양이 된다. 근거는 계약 이행(§15①4, GDPR Art.6(1)(b))."
+    },
+    {
+     "id": "AUT30-Q03",
+     "q": "「안전성 확보조치 기준」의 접속기록은 LP 담당자가 문서를 내려받은 기록을 말하나?",
+     "a": "아니다. 접속기록은 개인정보처리시스템에 접속한 자(정보주체 제외) — 운영자 등이 개인정보를 처리한 기록이다. LP 본인의 이용 기록은 활동 이벤트로, 그 자체가 처리 목적·보유 기간을 정해야 하는 개인정보다."
+    },
+    {
+     "id": "AUT30-Q04",
+     "q": "접속기록 보관 기간이 2년으로 늘어나는 조건 세 가지는?",
+     "a": "① 5만 명 이상 정보주체의 개인정보를 처리하는 시스템 ② 고유식별정보·민감정보를 처리하는 시스템 ③ 기간통신사업자. 그 밖은 1년 이상."
+    },
+    {
+     "id": "AUT30-Q05",
+     "q": "삭제 요청을 받았는데 감사 로그를 남겨야 한다. 무엇을 하고 무엇을 알리나?",
+     "a": "계정 row 의 식별 column 을 익명화하고(로그는 uuid 만 들고 있으므로 연결이 끊김), 법정 보존 대상 로그는 분리 보관하며 기간이 지나면 파기한다(§21③). 요청자에게는 남긴 기록의 종류·근거·보관 기간을 알린다."
+    },
+    {
+     "id": "AUT30-Q06",
+     "q": "이메일을 SHA-256 으로 hash 해서 로그에 남기면 가명처리로 충분한가?",
+     "a": "아니다. 이메일은 추측 가능한 값이라 후보 목록을 hash 해 비교하면 되돌릴 수 있다. key 를 별도 보관하는 HMAC 이나, 아예 무작위 uuid 를 쓰는 것이 맞다."
+    },
+    {
+     "id": "AUT30-Q07",
+     "q": "Auth0 를 일본 리전에 두면 국외 이전 문제가 없나?",
+     "a": "있다. 일본도 국외다. §28의8 의 근거(보통 계약 이행을 위한 처리위탁·보관 + 처리방침 공개)를 갖추고 처리방침에 이전 국가·받는 자·항목 등을 적어야 한다. 서울 리전을 고를 수 있는 서비스(Cognito·Supabase)면 이 문제가 없다."
+    },
+    {
+     "id": "AUT30-Q08",
+     "q": "유출 사고 대응에서 접속기록이 왜 결정적인가?",
+     "a": "72시간 안에 정보주체 통지·신고를 하려면 \"누가 언제 어떤 정보주체 데이터를 꺼냈나\" 를 알아야 범위를 정할 수 있다. 접속기록이 없으면 전원 통지·과대 신고 또는 통지 지연이 생긴다."
+    },
+    {
+     "id": "AUT30-Q09",
+     "q": "crypto-shredding 을 쓰면 안 되는 로그는?",
+     "a": "법정 보존 대상 로그. key 를 파기하면 읽을 수 없게 되어 보존 의무를 다하지 못한다. 보존 대상이 아닌 로그나 백업 속 사본 처리에 쓴다."
+    }
+   ]
+  },
+  {
+   "id": "AUT42",
+   "title": "AUT42 특권 계정·대량 열람 방어",
+   "part": "3부 심화 — 조직·tenant·서비스·특권·공격·감사·규제",
+   "summary": "로그인과 권한 판정을 정상으로 통과한 계정(내부자·탈취된 특권 계정)이 데이터를 얼마나 많이·얼마나 빨리 꺼내 가는지를 막고 알아채는 방법을 다룬다. 결론은 다섯 겹(특권 시간 줄이기 JIT·grant 만료·승인형 상승 · 조회 한도 ReadQuota · 내보내기 step-up·승인·워터마크, 마스킹은 열람 권한을 대신하지 않음 · 로그인 뒤 행동 이상 탐지와 경보·SIEM · 열람 접속기록)을 함께 쌓아야 한다는 것이다. account-auth-kit 은 0.1.1 에서 grant 만료·realm 가드·열람 기록 형식을 넣고, ReadQuota·JIT 승인 흐름은 0.2, 탐지 엔진은 명시 한계로 두며 정할 것은 없다.",
+   "items": [
+    {
+     "id": "AUT42#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "AUT42#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "AUT42#원리",
+     "title": "원리"
+    },
+    {
+     "id": "AUT42#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "AUT42#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "AUT42#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "AUT42#관리형 서비스 — 직접 구현 vs 관리형",
+     "title": "관리형 서비스 — 직접 구현 vs 관리형"
+    },
+    {
+     "id": "AUT42#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "AUT42#account-auth-kit 적용",
+     "title": "account-auth-kit 적용"
+    },
+    {
+     "id": "AUT42#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "AUT42#사례 — 2026-11 금융보안원 상시평가 시스템",
+     "title": "사례 — 2026-11 금융보안원 상시평가 시스템"
+    },
+    {
+     "id": "AUT42#LP 포털·어드민 적용",
+     "title": "적용 사례 — B2B 포털·어드민"
+    },
+    {
+     "id": "AUT42#다른 장 연결",
+     "title": "다른 장 연결"
+    },
+    {
+     "id": "AUT42#더 깊이",
+     "title": "더 깊이"
+    }
+   ],
+   "cards": [
+    {
+     "id": "AUT42-Q01",
+     "q": "인증과 권한 판정을 모두 통과했는데 이 장의 통제가 필요한 경우 두 가지는?",
+     "a": "내부자 남용(권한이 진짜로 있음)과 탈취된 특권 계정(자격 증명이 유효함). 둘 다 문 앞 통제가 \"통과\" 를 내리므로 양·속도·반출·행동·기록을 뒤에서 본다."
+    },
+    {
+     "id": "AUT42-Q02",
+     "q": "접속마다 IP 를 바꾸는 공격에 IP 기준 rate limit 이 약한 이유와 대신 쓸 key 는?",
+     "a": "IP 는 공격자가 가장 싸게 바꾸는 값이라 counter 가 매번 새로 시작한다. 로그인 뒤에는 계정·session·tenant 를 key 로 세고, IP 는 \"한 계정에 IP 가 몇 개나 바뀌었나\" 를 세는 탐지 신호로만 쓴다."
+    },
+    {
+     "id": "AUT42-Q03",
+     "q": "grant 만료를 회수 job 이 아니라 판정 시점에 확인해야 하는 이유는?",
+     "a": "job 이 멈추거나 늦으면 만료된 grant 가 계속 유효해진다. 판정에서 expires_at <= now 를 없는 grant 로 보면 fail closed 가 된다."
+    },
+    {
+     "id": "AUT42-Q04",
+     "q": "\"마스킹은 열람 권한을 대신하지 않는다\" 를 근거 세 가지로 설명하면?",
+     "a": "① 부분값을 다른 정보와 합치면 재식별된다 ② 화면에서만 마스킹하고 API 에 원문이 있으면 무의미하다 ③ 마스킹된 정보도 유출로 집계된다(금융보안원 사건의 마스킹된 이용자 정보 350여 건)."
+    },
+    {
+     "id": "AUT42-Q05",
+     "q": "ReadQuota 를 request 수가 아니라 row 수로 세야 하는 이유는?",
+     "a": "limit=100 한 번과 limit=1 백 번이 같은 양인데 request 수로 세면 다르게 센다. 공격자는 큰 페이지로 request 수를 줄인다."
+    },
+    {
+     "id": "AUT42-Q06",
+     "q": "탐지 엔진을 account-auth-kit 에 넣지 않는 이유는?",
+     "a": "탐지·상관 분석은 여러 시스템 로그를 모아야 의미가 있고 SIEM·UEBA 제품이 잘하는 일이다. 모듈은 업무 의미가 있는 표준 이벤트(data.accessed 등)를 내보내는 데까지 맡고, 전달 adapter 자리만 둔다(명시 한계)."
+    },
+    {
+     "id": "AUT42-Q07",
+     "q": "열람 접속기록이 유출 대응에서 하는 일은?",
+     "a": "누가 언제 어느 tenant·정보주체를 봤는지가 있어야 72시간 통지에 범위를 적을 수 있다. 기록이 없으면 \"조사 중\" 으로만 말하게 된다."
+    },
+    {
+     "id": "AUT42-Q08",
+     "q": "0.1.1 과 0.2 를 가른 기준은?",
+     "a": "기존 구조에 column·조건·이름을 더하는 것(I17·expires_at·열람 이벤트·phishing-resistant 강제·전원 폐기)은 0.1.1, 새 port·새 상태 기계가 필요한 것(JIT 승인 흐름·ReadQuota)은 0.2."
+    }
+   ]
+  },
+  {
+   "id": "AUT31",
+   "title": "AUT31 관리형 인증 서비스 비교",
+   "part": "4부 서비스·구현 매핑",
+   "summary": "이 장은 \"로그인·계정 관리를 남의 서비스(관리형 IdP)나 남의 오픈소스(자가 호스팅 IdP)에 맡기면 무엇을 얻고 무엇을 잃나\" 를 서비스 17개(관리형 13 + 자가 호스팅 오픈소스 6, 일부 겹침)로 비교한다 — 기능(프로토콜·MFA·passkey·B2B 조직·SCIM·hook), 비용 모델(MAU·MRU·aDAU·사용자 수·connection 수), 락인(비밀번호 hash 를 꺼낼 수 있나), 데이터 위치(한국 리전), SLA·장애 이력, 자가 호스팅 운영 부담을 2026-11-08 기준 공식 문서로 확인했다. 결론: 한국 리전에 데이터를 두면서 관리형을 쓰려면 후보가 사실상 AWS Cognito(서울 리전)·Supabase(서울 리전) 둘뿐이고, hash 를 꺼낼 수 있는 곳(Supabase·Firebase·자가 호스팅)과 못 꺼내는 곳(Cognito·대부분 SaaS — 지원 요청만)이 나뉘므로, LP 포털처럼 사용자가 적고 \"비밀번호 hash 는 LP 포털 DB 에만\"(R20) 이 정해진 서비스는 직접 구현 + IdpAdapter 경계를 기본으로 두고 관리형은 \"나중에 바꿀 수 있는 선택지\" 로만 남기는 것이 맞다.",
+   "items": [
+    {
+     "id": "AUT31#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "AUT31#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "AUT31#원리",
+     "title": "원리"
+    },
+    {
+     "id": "AUT31#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "AUT31#서비스별 상세",
+     "title": "서비스별 상세"
+    },
+    {
+     "id": "AUT31#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "AUT31#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "AUT31#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "AUT31#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "AUT31#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "AUT31#LP 포털·어드민 적용",
+     "title": "적용 사례 — B2B 포털·어드민"
+    },
+    {
+     "id": "AUT31#다른 장 연결",
+     "title": "다른 장 연결"
+    },
+    {
+     "id": "AUT31#더 깊이",
+     "title": "더 깊이"
+    }
+   ],
+   "cards": [
+    {
+     "id": "AUT31-Q01",
+     "q": "\"관리형 IdP 를 쓰면 앱의 사용자 table 이 필요 없다\" 는 왜 틀렸나?",
+     "a": "업무 데이터(LP 회사 소속·펀드 배정·상태·감사)는 IdP 에 없다. 앱은 (issuer, subject) 로 IdP 신원을 자기 사용자 row 에 묶어야 하고, 권한(무엇을 볼 수 있나)은 앱이 계산한다."
+    },
+    {
+     "id": "AUT31-Q02",
+     "q": "Cognito·Auth0·Firebase 중 공급자를 떠날 때 비밀번호 재설정 없이 사용자를 옮길 수 있는 곳은?",
+     "a": "Firebase — auth:export 가 modified scrypt hash 를 준다(받는 쪽이 그 형식을 검증해야 함). Auth0 는 유료 plan 지원 요청으로만 export(시간 보장 없음). Cognito 는 export 문서가 없어 lazy migration 뿐이다."
+    },
+    {
+     "id": "AUT31-Q03",
+     "q": "작은 B2B 포털(외부 사용자 수백 명)에서 관리형 비용을 정하는 것은 MAU 인가?",
+     "a": "아니다. MAU 는 대부분 무료 구간 안이다. MFA·passkey·SLA·custom domain·감사 로그 보관 같은 기능 tier 가 비용을 정한다."
+    },
+    {
+     "id": "AUT31-Q04",
+     "q": "hosted login 을 공급자 기본 도메인으로 쓰면 passkey 에서 무슨 문제가 생기나?",
+     "a": "WebAuthn credential 은 RP ID(도메인)에 묶인다. RP ID 가 공급자 도메인이면 공급자를 바꿀 때 passkey 를 모두 다시 등록해야 한다. 처음부터 custom domain 을 쓰면 피할 수 있다."
+    },
+    {
+     "id": "AUT31-Q05",
+     "q": "한국 리전에 사용자 데이터를 두는 관리형 서비스는(2026-11 기준 이 장에서 확인한 것)?",
+     "a": "AWS Cognito(서울 ap-northeast-2)와 Supabase(서울 ap-northeast-2). Auth0·Okta·Clerk·Stytch·Zitadel Cloud·Logto Cloud 는 한국 리전이 없다."
+    },
+    {
+     "id": "AUT31-Q06",
+     "q": "lazy migration endpoint 가 위험한 이유와 대책은?",
+     "a": "관리형이 사용자의 평문 비밀번호를 앱으로 보내 검증받는 endpoint 다. 호출자를 mTLS·서명으로 묶고, body 를 로그에 남기지 않고, 이전 기간이 끝나면 지운다."
+    },
+    {
+     "id": "AUT31-Q07",
+     "q": "WorkOS 로 고객사 50곳에 SSO 와 SCIM 을 모두 붙이면 connection 은 몇 개로 세나?",
+     "a": "SSO 50 + Directory Sync 50 = 100 connection(서로 따로 과금). 구간 단가가 내려가도 고객사 수에 비례해 는다."
+    },
+    {
+     "id": "AUT31-Q08",
+     "q": "관리형으로 바꿔도 앱에 남는 보안 책임 세 가지는?",
+     "a": "객체 수준 인가(IDOR), 앱 session 관리(cookie·CSRF·IdP 에서 끈 계정 반영), 업무 감사 로그. 그리고 ID token 검증 같은 RP 쪽 구현."
+    }
+   ]
+  },
+  {
+   "id": "AUT32",
+   "title": "AUT32 직접 구현 vs 라이브러리 vs 관리형 판단 기준",
+   "part": "4부 서비스·구현 매핑",
+   "summary": "이 장은 \"계정·인증을 어디까지 직접 만들고, 어디부터 라이브러리·자가 호스팅 IdP·관리형 IdP 에 맡기나\" 를 고르는 기준(보안 책임·규제·데이터 위치·비용·팀 역량·커스터마이징·사내 SSO 제약·외부 공개 여부)과 단계별 위임·하이브리드·출구 전략·결정 기록(ADR) 틀을 답한다. 결론: 사용자가 수백~수천 명인 B2B 포털이고 사내 SSO 가 표준 프로토콜이 아닐 때는 \"직접 + 검증된 라이브러리\"(hash·session·WebAuthn·OIDC client 는 라이브러리, 계정 상태·권한·화면은 직접) 를 기본으로 하고, IdpAdapter 경계와 표준 hash 형식(PHC 문자열)을 지켜 나중에 관리형으로 옮길 출구를 열어 둔다. 관리형은 \"MFA·passkey·위험 탐지·감사 대응을 사람 없이 빨리 갖춰야 할 때\" 고르고, 그때 잃는 것(hash 반출 제한·가격 tier·데이터 위치)을 ADR 에 적는다.",
+   "items": [
+    {
+     "id": "AUT32#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "AUT32#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "AUT32#원리",
+     "title": "원리"
+    },
+    {
+     "id": "AUT32#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "AUT32#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "AUT32#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "AUT32#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "AUT32#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "AUT32#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "AUT32#LP 포털·어드민 적용",
+     "title": "적용 사례 — B2B 포털·어드민"
+    },
+    {
+     "id": "AUT32#다른 장 연결",
+     "title": "다른 장 연결"
+    },
+    {
+     "id": "AUT32#더 깊이",
+     "title": "더 깊이"
+    }
+   ],
+   "cards": [
+    {
+     "id": "AUT32-Q01",
+     "q": "관리형 IdP 로 옮겨도 앱이 계속 직접 해야 하는 칸 세 가지는?",
+     "a": "로그인 상태 유지(앱 session — BFF 로 IdP token 을 브라우저에 두지 않음), 권한 판단(자원 단위), 감사 로그(앱 쪽 사건). Microsoft 책임 표도 \"Identities and users\"·접근 관리는 SaaS 에서도 고객 몫이라 적는다."
+    },
+    {
+     "id": "AUT32-Q02",
+     "q": "R20 \"비밀번호 hash 는 LP 포털 DB 에만\" 이 방법 선택에 주는 영향은?",
+     "a": "관리형 IdP 의 단계 2(자격 증명 저장 위임) 이상을 막는다. 관리형을 쓰려면 R20 을 다시 결정해야 하므로, 외부 고객 경로 기본값은 직접 + 라이브러리(또는 우리 인프라의 자가 호스팅 IdP)다."
+    },
+    {
+     "id": "AUT32-Q03",
+     "q": "관리형 IdP 를 떠날 때 가장 어려운 데이터는 무엇이고, 세 가지 대응은?",
+     "a": "비밀번호 hash. ① hash 를 받아 bulk import(새 쪽이 형식과 parameter 범위를 지원해야 — 예: Cognito ARGON2ID 는 m ≤ 19456 KiB) ② lazy migration(로그인 때 옛 쪽에 물어봄, 옛 시스템을 살려 둬야) ③ 전원 재설정(가장 단순하지만 이탈). passkey 로 전환하면 문제 자체를 없앨 수 있다."
+    },
+    {
+     "id": "AUT32-Q04",
+     "q": "하이브리드에서 \"같은 email 이면 같은 사람\" 으로 연결하면 왜 위험한가?",
+     "a": "다른 IdP(또는 다른 경로)에서 피해자 email 로 계정을 만든 공격자가 피해자 계정에 붙는다. (issuer, subject) 로만 찾고 연결은 로그인된 상태에서 명시적으로 한다(ASVS 5.0 6.8.1)."
+    },
+    {
+     "id": "AUT32-Q05",
+     "q": "사내 SSO 가 OIDC·SAML 이 아닌 자체 방식일 때 관리형 IdP 가 덜 매력적인 이유는?",
+     "a": "관리형의 연합 기능은 표준 프로토콜을 전제로 한다. 자체 방식을 붙이려면 중계(브로커)를 직접 만들어야 하므로, 결국 직접 구현이 사라지지 않고 운영할 서버만 늘어난다."
+    },
+    {
+     "id": "AUT32-Q06",
+     "q": "ASVS 5.0 L2 를 목표로 할 때, 인증 경로가 둘인 하이브리드에서 꼭 할 일은?",
+     "a": "모든 인증 경로를 문서화하고 같은 강도(MFA·잠금·rate limit)를 일관되게 강제한다(6.1.3·6.3.4). IdP 가 준 인증 강도(acr·amr·auth_time)를 확인하고, 없으면 단일 요소로 가정한다(6.8.4)."
+    },
+    {
+     "id": "AUT32-Q07",
+     "q": "직접 + 라이브러리를 고르면서 출구를 열어 두는 다섯 가지 습관은?",
+     "a": "PHC 형식 hash, acct_account.id 와 IdP subject 분리, IdpAdapter 밖에서 SDK 직접 호출 금지, OIDC 표준 claim 이름, 계약 전 hash 반출 조건 확인(ADR 에 기록)."
+    },
+    {
+     "id": "AUT32-Q08",
+     "q": "Cognito migrate user trigger 를 쓸 때 놓치기 쉬운 두 가지는?",
+     "a": "SRP(USER_SRP_AUTH) 로그인과 비밀번호 없는 로그인에서는 trigger 가 불리지 않는다(이전 기간엔 USER_PASSWORD_AUTH 계열 흐름을 허용). 이전 중엔 user pool 비밀번호 강도 정책을 강제하지 않으므로, 함수 안에서 강도를 검사해 못 미치면 RESET_REQUIRED 로 돌려준다."
+    }
+   ]
+  },
+  {
+   "id": "AUT33",
+   "title": "AUT33 언어·프레임워크별 구현 비교",
+   "part": "4부 서비스·구현 매핑",
+   "summary": "이 장은 Node(TypeScript)·Python·Java 세 생태계에서 계정·인증을 \"직접 + 검증된 라이브러리\" 로 만들 때 무엇을 고르나 — 비밀번호 hash·session·OIDC client/provider·WebAuthn·MFA·정책 엔진·시험 도구별로 어떤 라이브러리가 있고, 유지 상태·보안 공지 이력이 어떤지 — 를 답한다. 결론: 회사 서버 저장소 관례가 FastAPI(Python) + Next.js 화면이므로 LP 포털·어드민의 계정 코드는 FastAPI 서버 안에 부품을 조립(pwdlib/argon2-cffi · 서버 session table · Authlib 또는 직접 OIDC client · py_webauthn · 코드 RBAC) 하는 것이 기본이고, Next.js 쪽에는 인증 프레임워크를 두지 않고 BFF cookie 만 넘긴다. \"프레임워크 하나로 다 되는\" 선택지(Django+allauth, Spring Security, Better Auth)는 각각 장점이 크지만 저장소 언어·화면 구조와 맞지 않거나 공격 표면이 넓어 이번 기본값에서 뺀다.",
+   "items": [
+    {
+     "id": "AUT33#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "AUT33#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "AUT33#원리",
+     "title": "원리"
+    },
+    {
+     "id": "AUT33#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "AUT33#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "AUT33#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "AUT33#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "AUT33#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "AUT33#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "AUT33#LP 포털·어드민 적용",
+     "title": "적용 사례 — B2B 포털·어드민"
+    },
+    {
+     "id": "AUT33#다른 장 연결",
+     "title": "다른 장 연결"
+    },
+    {
+     "id": "AUT33#시험 도구 — 언어별",
+     "title": "시험 도구 — 언어별"
+    },
+    {
+     "id": "AUT33#더 깊이",
+     "title": "더 깊이"
+    }
+   ],
+   "cards": [
+    {
+     "id": "AUT33-Q01",
+     "q": "Django·Spring·FastAPI 중 로그인 때 session id 를 새로 만들어 주지 않는 것은? 그러면 무엇을 직접 해야 하나?",
+     "a": "FastAPI(Starlette). 로그인 handler 에서 이전 session 을 지우고 새 무작위 id 로 session row 를 만들어 cookie 를 다시 내려야 한다(session fixation 방지). Django 는 login() 이, Spring 은 changeSessionId 기본값이 해 준다."
+    },
+    {
+     "id": "AUT33-Q02",
+     "q": "Better Auth 의 GitHub 공지가 49건이라는 사실을 어떻게 읽어야 하나?",
+     "a": "공지 수 = 공격 표면 넓이 + 공개 방식. 대부분 선택 플러그인(apiKey·sso·scim·oauth-provider)에 있어, 쓰는 플러그인만 켜고 판 고정·공지 구독을 하면 위험이 크게 줄어든다. Django·Spring 은 GitHub 대신 자체 보안 페이지를 쓰므로 0건이 \"안전\" 을 뜻하지 않는다."
+    },
+    {
+     "id": "AUT33-Q03",
+     "q": "Next.js middleware 에서 로그인 확인을 하면 왜 충분하지 않나?",
+     "a": "middleware 는 우회될 수 있다(CVE-2025-29927 — x-middleware-subrequest header). 보안 판단은 데이터를 주는 API 서버에서 다시 해야 하고, middleware 확인은 리디렉션 같은 UX 용이다."
+    },
+    {
+     "id": "AUT33-Q04",
+     "q": "세 언어가 같은 계정 DB 를 읽을 수 있게 하려면 비밀번호 hash 를 어떤 형식으로 두나?",
+     "a": "PHC 문자열 형식의 Argon2id($argon2id$v=19$m=...,t=...,p=...$salt$hash). Django 형식·Spring {id} 접두사·Better Auth scrypt 형식은 변환이 필요하다."
+    },
+    {
+     "id": "AUT33-Q05",
+     "q": "FastAPI 에서 Starlette SessionMiddleware 를 로그인 상태에 쓰면 안 되는 이유는?",
+     "a": "서명된 cookie 에 내용을 담는 방식이라 서버가 특정 session 을 폐기할 수 없다(로그아웃·비밀번호 변경 뒤에도 훔친 cookie 가 만료까지 유효). 서버 session table 을 두고 cookie 에는 무작위 id 만 둔다."
+    },
+    {
+     "id": "AUT33-Q06",
+     "q": "왜 LP 포털 화면(Next.js)에 Better Auth 나 Auth.js 를 두지 않나?",
+     "a": "인증 주인이 둘이 되면 session 이 두 벌이 되어 로그아웃·폐기가 어긋난다. 회사 관례상 API 서버가 FastAPI 이므로 인증 주인은 FastAPI 하나, 화면은 cookie 를 넘기는 BFF 로만 둔다."
+    },
+    {
+     "id": "AUT33-Q07",
+     "q": "Lucia 를 지금 \"쓴다\" 는 것은 무슨 뜻이어야 하나?",
+     "a": "npm lucia 패키지를 설치하는 것이 아니라(deprecated), Lucia 사이트의 session 구현 설명을 읽고 직접 table·cookie 를 짜는 학습 자료로 쓰는 것이다."
+    },
+    {
+     "id": "AUT33-Q08",
+     "q": "Authlib CVE-2025-59420 이 \"여러 언어가 섞인 배포\" 에서 특히 위험한 이유는?",
+     "a": "다른 언어 검증기는 모르는 crit header 가 있는 token 을 거부하는데 Authlib 은 받아 주어, 같은 token 에 대한 판단이 서비스마다 달라진다(RFC 7515 §4.1.11 위반) — 한쪽 검사를 우회하는 경로가 된다."
+    }
+   ]
+  },
+  {
+   "id": "AUT34",
+   "title": "AUT34 인증 시험·검증 — 목 IdP·OWASP ASVS",
+   "part": "4부 서비스·구현 매핑",
+   "summary": "이 장은 \"계정·인증 기능이 맞게, 그리고 안전하게 동작하는지 어떻게 시험하나\" 를 답한다 — 시험 층(단위·계약·통합·E2E·보안), 목 IdP 를 두는 세 방식(코드 안 가짜 · 로컬 목 서버 · 실제 IdP test tenant), 시계 조작·메일 캡처·권한 행렬 시험, OWASP ASVS 5.0.0 수준 대응표, OpenID Conformance Suite, 개발·운영 경계다. 결론: LP 포털·어드민 같은 B2B 포털은 계약 시험(어댑터마다 같은 시험) + 로컬 목 서버(mock-oauth2-server 또는 Keycloak start-dev, Mailpit) + 주입한 시계 를 기본으로 두고, 실제 IdP test tenant 는 배포 전 smoke 시험에만 쓰며, 개발 서버가 운영 IdP 에 닿지 않게 issuer allowlist 를 환경마다 시작 시 검사한다. 완료 판정은 ASVS 5.0.0 Level 2 의 V6·V7·V8·V9·V10·V16 항목을 시험 ID 와 1:1 로 묶은 대응표로 한다.",
+   "items": [
+    {
+     "id": "AUT34#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "AUT34#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "AUT34#원리",
+     "title": "원리"
+    },
+    {
+     "id": "AUT34#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "AUT34#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "AUT34#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "AUT34#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "AUT34#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "AUT34#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "AUT34#LP 포털·어드민 적용",
+     "title": "적용 사례 — B2B 포털·어드민"
+    },
+    {
+     "id": "AUT34#다른 장 연결",
+     "title": "다른 장 연결"
+    },
+    {
+     "id": "AUT34#더 깊이",
+     "title": "더 깊이"
+    }
+   ],
+   "cards": [
+    {
+     "id": "AUT34-Q01",
+     "q": "코드 안 가짜(A1)와 로컬 목 서버(A2)를 둘 다 두는 이유는?",
+     "a": "A1 은 빠르고 부정 경우를 쉽게 만들지만 redirect·state·cookie·JWKS 같은 HTTP 경계 버그를 못 잡는다. A2 는 진짜 프로토콜을 지나 경계 버그를 잡지만 느리다. 계약 시험을 둘 다에 돌려 가짜가 진짜와 같은 오류 종류를 내는지 확인해야 A1 결과를 믿을 수 있다."
+    },
+    {
+     "id": "AUT34-Q02",
+     "q": "token 만료 시험에서 앱 시계만 돌리면 안 되는 이유는?",
+     "a": "목 IdP 는 여전히 \"지금\" 기준 token 을 낸다. 앱 시계를 돌려 exp 를 넘기는 시험과, 목 IdP 에 이미 만료된·nbf 미래 token 을 지시하는 시험(B4)을 둘 다 해야 clock skew 허용 범위와 exp·nbf 검사(ASVS 5.0.0 9.2.1) 누락을 함께 잡는다."
+    },
+    {
+     "id": "AUT34-Q03",
+     "q": "Q02 \"개발 서버도 운영 사내 SSO 에 닿으면 되지 않나\" 에 시험 관점에서 답하면?",
+     "a": "운영 IdP 와 나눈 비밀이 개발 서버에 놓이고(유출면 증가), 운영 사용자 신원이 개발 DB 에 들어가며, 시험이 운영 IdP 가용성에 묶여 flaky 해지고, 감사가 섞인다. 대신 목 IdP·개발용 연결을 쓰고 기동 시 issuer allowlist 로 운영 issuer 를 거부한다."
+    },
+    {
+     "id": "AUT34-Q04",
+     "q": "권한 행렬 시험을 단위(D1)로만 하면 무엇을 놓치나?",
+     "a": "endpoint 가 정책 엔진을 아예 부르지 않는 검사 누락과 IDOR. API 행렬(D2)과 route 전수 검사(D3)가 필요하다(ASVS 5.0.0 8.2.1·8.2.2)."
+    },
+    {
+     "id": "AUT34-Q05",
+     "q": "ASVS 를 인용할 때 판 번호가 꼭 필요한 이유는?",
+     "a": "4.0.3 의 V2 Authentication·V3 Session 이 5.0.0 에서는 V6·V7 로 바뀌었고 V9 token·V10 OAuth/OIDC 가 새 장이 됐다. \"V2 통과\" 는 판에 따라 전혀 다른 장을 가리킨다."
+    },
+    {
+     "id": "AUT34-Q06",
+     "q": "왜 MailHog 대신 Mailpit 인가?",
+     "a": "같은 역할이지만 MailHog 는 마지막 릴리스가 2020-08 이고, Mailpit 은 2026-10 에도 릴리스가 나오며 REST API 로 latest 메시지·수신자 query 를 바로 지원한다."
+    },
+    {
+     "id": "AUT34-Q07",
+     "q": "시험용 시계·시드 endpoint 를 둘 때 꼭 함께 둬야 할 장치 두 가지는?",
+     "a": "운영 빌드에서 등록 자체를 하지 않는 조건, 그리고 route 전수 검사에서 운영 route 목록에 시험 endpoint 가 없음을 확인하는 시험. 둘이 없으면 시간 조작·계정 생성 백도어가 된다."
+    },
+    {
+     "id": "AUT34-Q08",
+     "q": "사내 SSO 연동은 왜 OpenID Conformance Suite 로 시험할 수 없나?",
+     "a": "사내 SSO 가 OIDC·SAML 이 아닌 자체 방식(1회용 입장권 + 대칭 키)이라 표준 시험 대상이 아니다. 앱 안 가짜 adapter(예: 설계 노트의 FakeCompanySsoAdapter)와 작은 목 HTTP 서버로 정상·재사용·만료·위조 경우를 직접 만든다."
+    }
+   ]
+  },
+  {
+   "id": "AUT35",
+   "title": "AUT35 인증 운영 — 키 회전·비밀 관리·장애 대비",
+   "part": "4부 서비스·구현 매핑",
+   "summary": "이 장은 인증 시스템을 \"만든 뒤\" 계속 굴리는 일 — 서명 키·pepper·암호화 키 회전, 비밀 저장소 선택, IdP 장애 때 로그인 유지, 인증 지표·알림, 인증서 만료, 배포 중 session 유지, 사고 때 token 대량 폐기 — 을 다룬다. 핵심 결론: 키는 \"다음 키를 먼저 게시 → 바꿔 서명 → 이전 키를 token 수명만큼 더 게시 → 제거\" 의 겹침(overlap)으로 회전하고, 비밀은 실행 시점에 관리형 저장소(Parameter Store SecureString 또는 Secrets Manager)에서 넣으며, break-glass 계정과 실패 사유 코드별 지표를 미리 만들어 두어야 장애·사고 때 원인을 알 수 있다.",
+   "items": [
+    {
+     "id": "AUT35#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "AUT35#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "AUT35#원리",
+     "title": "원리"
+    },
+    {
+     "id": "AUT35#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "AUT35#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "AUT35#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "AUT35#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "AUT35#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "AUT35#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "AUT35#LP 포털·어드민 적용",
+     "title": "적용 사례 — B2B 포털·어드민"
+    },
+    {
+     "id": "AUT35#다른 장 연결",
+     "title": "다른 장 연결"
+    }
+   ],
+   "cards": [
+    {
+     "id": "AUT35-Q01",
+     "q": "JWKS 에 새 키를 게시하자마자 그 키로 서명하면 무엇이 깨지나?",
+     "a": "검증자가 이전 JWKS 를 cache 하고 있으면 새 kid 를 모른다. 재조회를 하더라도 cooldown 안이면 실패하고, 재조회 자체를 안 하는 검증자는 cache 만료까지 실패한다. 그래서 게시(T1)와 서명 전환(T2) 사이에 검증자 최대 cache TTL + 여유를 둔다(OIDC Core §10.1.1 의 \"새 키를 먼저 추가\")."
+    },
+    {
+     "id": "AUT35-Q02",
+     "q": "이전 키를 JWKS 에서 언제 빼도 되나?",
+     "a": "그 키로 서명한 마지막 token 이 만료된 뒤 — 서명 중단 시각 + 그 키로 서명한 token 의 최대 수명 + 시계 오차. 키 유출이면 기다리지 않고 즉시 뺀다(전원 재로그인을 감수)."
+    },
+    {
+     "id": "AUT35-Q03",
+     "q": "pepper 는 왜 회전이 어렵고, 어떻게 완화하나?",
+     "a": "pepper 는 비밀번호와 섞여 hash 가 되므로 평문 비밀번호 없이는 새 pepper 로 다시 계산할 수 없다. OWASP 는 유출 시 전원 강제 재설정을 말한다. 정기 회전이면 pepper_version 을 두고 로그인 성공 때 재계산, 또는 hash 를 대칭키로 암호화하는 구조면 비밀번호 없이 재암호화할 수 있다."
+    },
+    {
+     "id": "AUT35-Q04",
+     "q": "KMS 자동 회전을 켜 두면 옛 데이터도 새 키로 다시 암호화되나?",
+     "a": "아니다. KMS 는 옛 key material 을 보관해 옛 암호문을 계속 풀고, 새 암호화만 새 material 로 한다. data key 자체가 새었다면 데이터를 직접 재암호화해야 한다."
+    },
+    {
+     "id": "AUT35-Q05",
+     "q": "ECS 에서 Secrets Manager 비밀을 회전했는데 앱이 옛 값을 쓰는 이유는?",
+     "a": "ECS secrets 는 컨테이너 시작 때만 값을 넣는다. 실행 중 컨테이너는 새 값을 받지 않으므로 새 task 를 띄우거나 force new deployment 해야 한다. 재시작 없이 따라가려면 SDK 로 실행 중 조회 + cache."
+    },
+    {
+     "id": "AUT35-Q06",
+     "q": "Secrets Manager 의 single user 와 alternating users 회전 전략의 차이는?",
+     "a": "single user 는 한 계정 비밀번호를 바꿔 단순하지만 DB 반영과 비밀 갱신 사이에 잠깐 거부가 날 수 있다(재시도로 완화). alternating users 는 두 계정을 번갈아 바꿔 회전 중에도 항상 유효한 자격 증명이 있지만 clone 할 superuser 비밀이 필요하다."
+    },
+    {
+     "id": "AUT35-Q07",
+     "q": "break-glass 계정을 평소 관리자와 같은 IdP·같은 MFA 로 만들면 왜 안 되나?",
+     "a": "break-glass 가 필요한 순간이 바로 그 IdP·MFA 가 죽은 순간이기 때문이다. Entra 지침은 연합되지 않은 클라우드 전용 계정, 평소와 다른 phishing-resistant 수단, 로그인을 막는 정책에서 제외, 사용 알림, 90일 점검을 요구한다."
+    },
+    {
+     "id": "AUT35-Q08",
+     "q": "\"인증에 실패했습니다\" 한 문구만 보여 주면서도 운영자가 원인을 알게 하려면?(Q07)",
+     "a": "서버가 실패 단계마다 사유 코드를 로그·지표에 남기고, 화면에는 일반 문구와 request ID 를 보여 준다. 사용자가 request ID 로 문의하면 운영자가 로그에서 바로 사유를 찾는다. 사유를 화면에 그대로 보여 주면 계정 열거·내부 구조 노출이 된다."
+    },
+    {
+     "id": "AUT35-Q09",
+     "q": "모르는 kid 를 볼 때마다 JWKS 를 다시 받으면 무슨 문제가 있나?",
+     "a": "공격자가 임의의 kid 를 넣은 token 을 대량으로 보내 우리 서버가 IdP JWKS endpoint 를 두드리게 만든다(DoS 증폭, IdP rate limit 에 걸려 정상 검증도 실패). cooldown 으로 재조회 빈도를 제한한다."
+    },
+    {
+     "id": "AUT35-Q10",
+     "q": "공개 TLS 인증서 최대 유효 기간 단축이 인증 운영에 주는 영향은?",
+     "a": "SC-081v3 로 2026-03 200일 → 2027-03 100일 → 2029-03 47일. 손 갱신은 불가능해지므로 ACM·ACME 자동 갱신과 만료 남은 일수 알림이 필수다. ACM 이 다루지 않는 SAML·mTLS 인증서는 별도 목록과 겹침 회전이 필요하다."
+    }
+   ]
+  },
+  {
+   "id": "AUT36",
+   "title": "AUT36 사내 SSO 연동 — Circle SLO·AI Portal",
+   "part": "5부 적용 — LP 포털·어드민·사내 SSO·공통 계정",
+   "summary": "이 장은 사내 SSO(Circle SLO 와 그 위의 AI Portal session 위임)가 표준(OIDC·SAML)의 어느 부분과 대응하고 어떤 보안 성질(받는 이에 묶이지 않는 1회용 입장권, 서명 없는 session 확인, Secure 없는 같은 도메인 cookie, 로그아웃 전파 없음)을 갖는지, 새 서비스가 고를 수 있는 연동 길 다섯 가지(포털 session 위임 · 포털 session 교환 · SLO 직접 · API Service 중계 · broker 로 OIDC 화)를 비교한다. 결론: LP 포털 어드민은 베타에서 AI Portal session 을 진입 때 한 번 확인하고 자체 session 을 따로 발급하는 교환형이 가장 싸고 안전하며, IdpAdapter 계약 뒤에 두어 나중에 SLO 직접·OIDC broker 로 바꿀 수 있게 한다. 정할 것 없음.",
+   "items": [
+    {
+     "id": "AUT36#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "AUT36#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "AUT36#원리",
+     "title": "원리"
+    },
+    {
+     "id": "AUT36#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "AUT36#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "AUT36#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "AUT36#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "AUT36#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "AUT36#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "AUT36#LP 포털·어드민 적용",
+     "title": "적용 사례 — B2B 포털·어드민"
+    },
+    {
+     "id": "AUT36#다른 장 연결",
+     "title": "다른 장 연결"
+    },
+    {
+     "id": "AUT36#더 깊이",
+     "title": "더 깊이"
+    }
+   ],
+   "cards": [
+    {
+     "id": "AUT36-Q01",
+     "q": "OTA 와 OIDC authorization code 의 가장 큰 보안 차이는?",
+     "a": "code 는 발급받은 client 에 묶이고(client_id, PKCE) token endpoint 가 client 를 인증한다. OTA 는 target 이 동작과 무관해 받는 시스템에 묶이지 않고, login 호출자 인증은 IP 허용뿐이다."
+    },
+    {
+     "id": "AUT36-Q02",
+     "q": "허용 IP 서버에서 아무 코드나 Circle login 을 부를 수 있는데 왜 특정 직원으로 로그인할 수 없나? 예외는?",
+     "a": "순방향 login 은 사용자 브라우저가 가져온 OTA 가 있어야 사번을 준다. 예외: 역방향 create 가 허용 서버에 제한 없이 열려 있으면 그 서버가 임의 사번 OTA 를 만들 수 있다(Circle 쪽 제한은 미확인)."
+    },
+    {
+     "id": "AUT36-Q03",
+     "q": "A1(매 request 위임)과 A2(교환형)에서 포털 로그아웃은 각각 언제 반영되나?",
+     "a": "A1 은 다음 request 에서 바로(포털 session 이 없으므로 401). A2 는 자체 session idle 이 끝나거나 민감 작업 재확인 때 반영된다."
+    },
+    {
+     "id": "AUT36-Q04",
+     "q": "포털 하위 서비스를 cookie Path 로 나누면 서로 격리되나?",
+     "a": "아니다. 같은 origin 이면 script 가 서로의 API 를 부를 수 있고, RFC 6265 §4.1.2.4 는 Path 를 보안에 쓸 수 없다고 적는다. 격리하려면 다른 origin(sub-domain)이 필요하다."
+    },
+    {
+     "id": "AUT36-Q05",
+     "q": "로그인 실패를 화면에 단계별로 보이면 안 되는 이유와, 그래도 운영자가 원인을 찾게 하는 방법은?",
+     "a": "단계별 오류는 암호문·OTA 조작 결과와 계정 존재 여부를 공격자에게 알려 준다(padding oracle·열거). 화면엔 일반 문구 + 참조 번호를 보이고, 서버 로그에 참조 번호 + reason_code 를 남긴다."
+    },
+    {
+     "id": "AUT36-Q06",
+     "q": "터미널 curl 로 부르면 401, 브라우저에서는 403 — 각각 어느 층의 응답인가?",
+     "a": "401 '포털 로그인이 필요합니다' 는 앱이 낸 것(cookie 없음). 403 nginx 기본 페이지는 앞단 reverse proxy 의 경로 미등록 — 로그인과 무관하다."
+    },
+    {
+     "id": "AUT36-Q07",
+     "q": "목 adapter 를 설정 flag 로 끄는 것보다 build 등록 목록에서 빼는 것이 나은 이유는?",
+     "a": "설정 실수 하나로 운영에서 아무 사번 로그인이 열린다. 등록 목록 + 시작 검사는 실수를 프로세스 시작 실패로 바꾼다."
+    },
+    {
+     "id": "AUT36-Q08",
+     "q": "broker(D)를 세우면 SLO 의 약점이 사라지나?",
+     "a": "아니다. 서비스 쪽은 서명·aud·nonce·Back-Channel Logout 같은 표준 검증을 얻지만, broker 앞단의 SLO 연동(받는 이 묶음 없음·MAC 없음·로그아웃 없음)은 그대로이고 broker 가 최대 표적이 된다."
+    }
+   ]
+  },
+  {
+   "id": "AUT37",
+   "title": "AUT37 LP 포털·어드민 적용 설계 입력",
+   "part": "5부 적용 — LP 포털·어드민·사내 SSO·공통 계정",
+   "summary": "이 장은 LP 요구 R01~R31 을 1~4부 장 결론에 하나씩 대입하고, LP 포털 계정 정책 기획서 의 [AUT 대조 예정] 값과 맞춰 본 설계 입력이다. 결론: LP 포털은 직접 구현 + 라이브러리(비밀번호 Argon2id + 1회용 메일 링크 + 서버 session) 위에 TOTP·passkey 를 MfaMethod 로 얹는 묶음, 어드민은 사내 SSO(AI Portal session) 어댑터 + 어드민 자체 서버 session + 민감 작업 step-up 이고, 기획서와 장 결론이 어긋나는 곳 11개(MFA 베타 포함·재설정 링크 수명·영구 잠금·cookie 호스트 공유·어드민 MFA 등)를 「결정이 필요한 항목」 표로 넘긴다.",
+   "items": [
+    {
+     "id": "AUT37#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "AUT37#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "AUT37#원리",
+     "title": "원리"
+    },
+    {
+     "id": "AUT37#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "AUT37#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "AUT37#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "AUT37#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "AUT37#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "AUT37#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "AUT37#LP 포털·어드민 적용",
+     "title": "적용 사례 — B2B 포털·어드민"
+    },
+    {
+     "id": "AUT37#더 깊이",
+     "title": "더 깊이"
+    },
+    {
+     "id": "AUT37#다른 장 연결",
+     "title": "다른 장 연결"
+    }
+   ],
+   "cards": [
+    {
+     "id": "AUT37-Q01",
+     "q": "LP 포털에 관리형 IdP 를 쓰지 않는 가장 결정적인 이유는?",
+     "a": "R20 \"비밀번호 hash 는 LP 포털 DB 에만\" 이다. 관리형은 자격 증명을 공급자 DB 에 두므로 이 결정을 다시 열어야만 쓸 수 있다. 서울 리전 후보가 둘뿐이라는 것과 승인 뒤 초대는 앱이 통제해야 한다는 것이 보조 근거다(AUT31·AUT32)."
+    },
+    {
+     "id": "AUT37-Q02",
+     "q": "재설정 링크 24시간이 \"NIST 를 따른 값\" 이라는 말에서 틀린 점은?",
+     "a": "63B-4 §4.2 는 메일로 보낸 issued recovery code 가 최대 24시간 유효해야 한다(SHALL at most)고 했다. 24시간은 상한일 뿐 권고값이 아니다. 재설정은 사용자가 방금 요청한 것이니 1시간 이하로 줄여도 불편이 작고 공격 창은 줄어든다."
+    },
+    {
+     "id": "AUT37-Q03",
+     "q": "TOTP 만으로 AAL2 를 채웠다고 할 때 63B-4 의 어느 요구를 놓치나?",
+     "a": "§2.2.2 \"AAL2 에서 phishing-resistant 인증 선택지를 하나 이상 제공(SHALL offer)\". TOTP 는 phishing-resistant 가 아니므로 passkey 같은 선택지를 함께 둬야 한다."
+    },
+    {
+     "id": "AUT37-Q04",
+     "q": "어드민이 매 request AI Portal session 을 확인하는데도 step-up 이 따로 필요한 이유는?",
+     "a": "session 확인은 \"아직 로그인 상태인가\" 일 뿐 사람이 자격 증명을 다시 낸 것이 아니다. 탈취된 session 은 확인을 통과한다. 승인·역할 부여 같은 고위험 동작은 최근 재인증을 요구해야 한다(ASVS 5.0 7.5.3)."
+    },
+    {
+     "id": "AUT37-Q05",
+     "q": "cookie 를 Path 로 나누면 같은 호스트의 다른 앱과 분리된다고 볼 수 없는 이유는?",
+     "a": "RFC 6265 §4.1.2.4 가 Path 는 보안에 기댈 수 없다고 명시한다. 같은 origin 이면 다른 경로의 페이지 script 가 포털 경로로 request 를 보내거나 frame 으로 열 수 있다. origin(호스트)을 나눠야 브라우저의 same-origin 경계가 작동한다."
+    },
+    {
+     "id": "AUT37-Q06",
+     "q": "승인과 포털 DB 반영을 \"한 트랜잭션\" 으로 짜면 무슨 일이 생기나?",
+     "a": "두 DB 는 하나의 트랜잭션으로 묶이지 않는다. 한쪽만 커밋되어 \"승인됐는데 계정 없음\" 이나 그 반대가 생긴다. outbox row + 멱등 반영 + 실패 표시로 푼다."
+    },
+    {
+     "id": "AUT37-Q07",
+     "q": "영구 잠금(locked)이 왜 서비스 거부 위험인가?",
+     "a": "공격자는 비밀번호를 몰라도 남의 메일로 실패를 쌓을 수 있다. 시간 기반 임시 잠금 + 본인 재설정 해제로 두면 공격자는 계정을 오래 막을 수 없다."
+    },
+    {
+     "id": "AUT37-Q08",
+     "q": "이 장이 LP 포털 기준선으로 ASVS L3 가 아니라 L2 를 고른 근거와 전제는?",
+     "a": "ASVS 5.0 은 L2 를 대부분 애플리케이션의 목표로, L3 를 최고 수준 보안 목표(예: 은행 온라인 뱅킹)로 둔다. LP 포털은 이체가 없는 조회 중심이라는 전제에서 L2 를 기준선으로, 어드민 고위험 동작에만 L3 항목을 더했다. 이체·주문 기능이 생기면 전제가 깨진다."
+    }
+   ]
+  },
+  {
+   "id": "AUT38",
+   "title": "AUT38 공통 계정 모듈 설계 입력 — 추상화 경계",
+   "part": "5부 적용 — LP 포털·어드민·사내 SSO·공통 계정",
+   "summary": "이 장은 개인 GitHub private 저장소에 만들 공통 계정 모듈이 무엇을 맡고 무엇을 앱에 남기는지, 「구현 갈래」 19 지점을 어떤 인터페이스(port)와 기본·목 구현(adapter)으로 나누는지, 회사 값과 사내 연동 코드를 어디에 두는지를 정한 설계 입력이다. 결론: Python(FastAPI) 라이브러리 한 벌(core + adapter extras) + 앱마다 얇은 조립 코드 형태로 만들고, 사내 SSO 어댑터 구현(AUT36 사내 SSO 연동 — Circle SLO·AI Portal)은 회사 저장소에 두며 개인 저장소에는 CompanySsoAdapter 계약·가짜 구현만 둔다. 완료 기준은 OWASP ASVS 5.0.0 Level 2 의 V6·V7·V8·V16 중 모듈 몫 항목을 계약 시험으로 덮는 것이다.",
+   "items": [
+    {
+     "id": "AUT38#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "AUT38#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "AUT38#원리",
+     "title": "원리"
+    },
+    {
+     "id": "AUT38#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "AUT38#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "AUT38#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "AUT38#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "AUT38#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "AUT38#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "AUT38#LP 포털·어드민 적용",
+     "title": "적용 사례 — B2B 포털·어드민"
+    },
+    {
+     "id": "AUT38#더 깊이",
+     "title": "더 깊이"
+    },
+    {
+     "id": "AUT38#다른 장 연결",
+     "title": "다른 장 연결"
+    }
+   ],
+   "cards": [
+    {
+     "id": "AUT38-Q01",
+     "q": "왜 로컬 비밀번호 로그인도 IdpAdapter 하나로 다루나?",
+     "a": "core 가 \"로컬 계정\" 을 특별 취급하면 관리형 IdP·고객사 SSO 로 옮길 때 core 분기를 고쳐야 한다. LocalPasswordAdapter 가 ExternalIdentity(issuer=\"local\", …) 를 돌려주게 하면 로그인 경로가 하나라 adapter 교체만으로 옮겨진다."
+    },
+    {
+     "id": "AUT38-Q02",
+     "q": "R20 을 \"설정으로 끔\" 이 아니라 \"없음\" 으로 증명해야 하는 이유와 방법은?",
+     "a": "설정은 실수·장애 대응 중에 켜질 수 있다. 포털 이미지에 직원 adapter 패키지를 설치하지 않고(S3·C2), 시작 시 assert_composition 이 금지 조합을 거부하며, 어드민 migration 에 비밀번호 table 이 없고, CI 가 포털 이미지에서 사내 adapter import 실패를 확인한다."
+    },
+    {
+     "id": "AUT38-Q03",
+     "q": "설정으로 바꿀 수 있는 것과 없는 것을 하나씩 들면?",
+     "a": "바꿀 수 있음: Argon2id 인자, 재설정 링크 수명(단 24시간 상한), idle timeout. 바꿀 수 없음: 로그인 시 session 회전, 계정 없을 때 dummy hash 검증, 기본 거부 — 끌 수 있으면 앱 하나가 끄는 순간 그 앱이 뚫린다."
+    },
+    {
+     "id": "AUT38-Q04",
+     "q": "관리형 IdP 를 OidcIdpAdapter 로 붙이면 모듈의 어떤 port 가 안 쓰이고 어떤 port 는 남나?",
+     "a": "안 쓰임: PasswordHasher·PasswordPolicy·LockoutPolicy·재설정용 OneTimeTokenService·MfaMethod(IdP 가 capabilities() 로 맡는다고 선언). 남음: SessionStore·PolicyEngine·ScopeCalculator·ApprovalWorkflow·AuditSink — session·권한·승인은 앱 일이다."
+    },
+    {
+     "id": "AUT38-Q05",
+     "q": "사내 SSO adapter 구현을 개인 저장소에 두지 않는 이유는? 이름만 바꾸면 안 되나?",
+     "a": "이름을 일반화해도 입장권 형식·복호화 방식·사내 API 모양 같은 세부가 코드에 남는다. 개인 저장소에는 일반 계약(TicketSsoAdapter·UpstreamSessionAdapter)과 가짜 구현, 계약 시험만 두고 실제 구현은 회사 저장소에서 같은 계약 시험을 상속해 돌린다."
+    },
+    {
+     "id": "AUT38-Q06",
+     "q": "hook 을 session 회전 \"전\" 에 부르면 무엇이 깨지나?",
+     "a": "hook 이 예외를 던지거나 중간에 response 를 만들면 회전이 건너뛰어질 수 있고, 로그인 전 session id 가 그대로 남아 session fixation 이 된다. 그래서 core 가 hook 위치를 불변식 뒤로 고정한다."
+    },
+    {
+     "id": "AUT38-Q07",
+     "q": "R02 확장 때 DB 와 session 에서 바뀌는 것은?",
+     "a": "DB 는 acct_membership 의 UNIQUE(account_id) 제약 하나를 지운다. session 은 이미 active_tenant_id 를 갖고 있으므로, 회사 전환 endpoint 에서 session 을 회전하고 active_tenant_id 를 바꾸고 펀드 범위를 다시 계산한다."
+    },
+    {
+     "id": "AUT38-Q08",
+     "q": "ASVS L2 를 \"모듈이 통과\" 한다고 말할 수 없는 이유와 대신 쓰는 판정은?",
+     "a": "ASVS 는 앱 전체 검증 기준이고 문서 요구(6.1.x·8.1.x·16.1.1)나 route 별 권한 호출은 앱 몫이다. 그래서 항목마다 주인을 나누고, 모듈 몫은 계약 시험이 기본·목 구현 모두에서 통과하는 것으로, 앱 몫은 앱 저장소의 대응표로 판정한다."
+    }
+   ]
+  },
+  {
+   "id": "AUT39",
+   "title": "AUT39 디지털 신원 지갑과 브라우저 연합 — VC·DID·OpenID4VC·mDL·FedCM",
+   "part": "6부 연구 전선",
+   "summary": "디지털 신원 지갑(VC·SD-JWT VC·mdoc을 OpenID4VCI로 받고 OpenID4VP·Digital Credentials API로 내놓음)과 브라우저가 중재하는 연합 로그인(FedCM)이 어떻게 동작하고 지금의 redirect 기반 OIDC와 무엇이 다른지 다룬다. 결론: 2026-11 기준 LP 포털·어드민의 로그인은 redirect OIDC(또는 사내 방식)를 그대로 쓰고, 지갑 제시는 실명·자격 확인 단계에 나중에 붙일 후보로 IdpAdapter 안에 자리만 남기며, FedCM은 Chromium 계열에서만 동작해 단독 수단으로 쓰지 않는다. 정할 것 없음.",
+   "items": [
+    {
+     "id": "AUT39#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "AUT39#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "AUT39#원리",
+     "title": "원리"
+    },
+    {
+     "id": "AUT39#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "AUT39#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "AUT39#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "AUT39#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "AUT39#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "AUT39#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "AUT39#LP 포털·어드민 적용",
+     "title": "적용 사례 — B2B 포털·어드민"
+    },
+    {
+     "id": "AUT39#다른 장 연결",
+     "title": "다른 장 연결"
+    }
+   ],
+   "cards": [
+    {
+     "id": "AUT39-Q01",
+     "q": "연합 로그인과 지갑 제시에서 \"IdP(issuer)가 사용자의 방문을 아는가\" 는 각각 어떻고, 그 대가는 무엇인가?",
+     "a": "연합은 IdP가 로그인마다 assertion을 만들어 모든 RP 방문을 안다 — 대신 계정 정지가 즉시 반영된다. 지갑은 issuer가 미리 서명해 두고 verifier가 issuer에게 묻지 않으므로 issuer는 제시를 모른다 — 대신 폐기 반영이 status list 주기만큼 늦고, 계정 연결을 RP가 떠맡는다."
+    },
+    {
+     "id": "AUT39-Q02",
+     "q": "SD-JWT에서 공개하지 않은 claim을 verifier가 추측할 수 없는 이유와, KB-JWT가 따로 필요한 이유는?",
+     "a": "payload에는 hash([salt, name, value]) 만 있고 salt가 무작위라 값 후보를 대입해도 맞출 수 없다. issuer 서명은 \"이 내용이 진짜\" 만 말하므로, \"지금 이 holder가 이 verifier에게 냈다\" 는 holder 키로 nonce·aud·sd_hash 에 서명한 KB-JWT로 따로 증명해야 replay를 막는다."
+    },
+    {
+     "id": "AUT39-Q03",
+     "q": "cross-device QR 제시에서 공격자가 피해자에게 QR을 보내면 무슨 일이 생기고, DC API는 왜 이를 줄이나?",
+     "a": "피해자 지갑이 응답을 verifier에 보내면 QR을 띄운 공격자 브라우저 session 이 피해자 신원으로 확인된다(relay·session fixation). DC API는 브라우저가 요청 origin을 지갑에 넘겨 응답에 묶고, PC↔폰을 CTAP hybrid의 BLE 근접 확인으로 이어 원격 relay를 어렵게 한다."
+    },
+    {
+     "id": "AUT39-Q04",
+     "q": "FedCM은 OIDC를 대체하나?",
+     "a": "아니다. FedCM은 계정 선택과 token 전달을 브라우저가 중재하는 운반 수단이고, IdP가 돌려주는 token(보통 ID token)의 검증은 OIDC 규칙 그대로다. 3rd-party cookie에 기대던 iframe·redirect 부분을 바꾸는 것이며, Chromium 계열만 지원하므로 redirect OIDC 대체 경로가 계속 필요하다."
+    },
+    {
+     "id": "AUT39-Q05",
+     "q": "DID를 쓰면 issuer를 믿을 수 있게 되나?",
+     "a": "아니다. DID는 \"이 식별자의 공개 키가 무엇인가\" 를 푸는 방법(JWKS URI·X.509와 같은 자리)이고, \"이 issuer가 믿을 만한가\" 는 별도 신뢰 목록·federation·정책이 정한다. did:key 는 누구나 만들 수 있다."
+    },
+    {
+     "id": "AUT39-Q06",
+     "q": "LP 포털이 지갑 제시로 받은 생년월일을 user table에 그대로 저장하면 무엇이 문제이고, 무엇을 저장해야 하나?",
+     "a": "목적보다 많은 개인정보를 보관하게 되어 데이터 최소화 위반·유출 피해가 커진다. 확인 목적이 \"만 19세 이상\" 이면 판정 결과(age_over_19=true)·확인 방법·시각·만료만 identity_verification 에 남기고 원문 claim·vp_token은 버린다. 가능하면 처음부터 DCQL로 판정 claim만 요청한다."
+    },
+    {
+     "id": "AUT39-Q07",
+     "q": "같은 SD-JWT VC를 두 회사 사이트에 제시하면 왜 두 회사가 같은 사람임을 알 수 있고, 어떤 대책이 있나?",
+     "a": "issuer 서명·cnf 키·disclosure salt가 매번 같아 두 verifier가 값을 비교하면 연결된다. issuer가 credential을 여러 장 발급해 1회용으로 쓰는 batch 방식, 또는 제시마다 다른 증명을 만드는 BBS·ZKP(Frigo·shelat 2024) 방식이 대책이다."
+    },
+    {
+     "id": "AUT39-Q08",
+     "q": "HAIP 1.0이 issuer 신뢰를 DID가 아니라 X.509 x5c 로 정한 것은 무엇을 뜻하나?",
+     "a": "고보증 생태계(EUDI·mDL)가 기존 정부·기관 PKI와 인증서 폐기 체계를 그대로 쓰겠다는 선택이다. DID 생태계와의 상호운용은 별도 프로필 몫이 되고, verifier 구현은 X.509 체인 검증과 trust anchor 목록 관리가 핵심이 된다."
+    }
+   ]
+  },
+  {
+   "id": "AUT40",
+   "title": "AUT40 인증 연구 주제 지도 — passkey 이후·지속 인증·zero trust·PQC·형식 검증·비밀번호 연구 계보",
+   "part": "6부 연구 전선",
+   "summary": "이 장은 인증 분야에서 아직 답이 정해지지 않은 연구 전선 8갈래(passkey 이후 과제·지속 인증·zero trust 지속 평가·PQC 이전·형식 검증·비밀번호 연구 계보·사용성 보안·AI 와 인증)가 각각 무엇을 묻고, 대표 논문·표준이 어디까지 왔고, 실무 설계에 무엇을 남기는지를 지도로 정리한다. 핵심 결론: LP 포털·어드민 같은 B2B 포털이 지금 연구 결과에서 가져올 것은 세 가지다 — ① 서명 알고리즘을 갈아 끼울 수 있는 TokenCodec·KeyProvider 경계(암호 민첩성), ② passkey 를 넣어도 복구 경로가 가장 약한 고리가 되지 않게 복구 수단을 등급화, ③ \"로그인 한 번 = 끝\" 이 아니라 session 을 신호로 다시 평가할 수 있는 hook(CAEP 수신·재인증) 자리. 행동 생체 지속 인증·순수 PQC 서명은 아직 도입하지 않는다.",
+   "items": [
+    {
+     "id": "AUT40#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "AUT40#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "AUT40#원리",
+     "title": "원리"
+    },
+    {
+     "id": "AUT40#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "AUT40#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "AUT40#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "AUT40#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "AUT40#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "AUT40#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "AUT40#LP 포털·어드민 적용",
+     "title": "적용 사례 — B2B 포털·어드민"
+    },
+    {
+     "id": "AUT40#다른 장 연결",
+     "title": "다른 장 연결"
+    },
+    {
+     "id": "AUT40#더 깊이",
+     "title": "더 깊이"
+    }
+   ],
+   "cards": [
+    {
+     "id": "AUT40-Q01",
+     "q": "passkey 를 도입한 뒤 공격자가 옮겨 가는 곳 세 가지는?",
+     "a": "계정 복구 경로(email·SMS·고객센터), synced passkey 를 담은 provider 계정, 기기·provider 사이 이전 과정. 복구 경로의 보증 수준이 계정 전체 보증의 상한이 된다."
+    },
+    {
+     "id": "AUT40-Q02",
+     "q": "CASPER 는 어떤 위협을 어떤 발상으로 다루나?",
+     "a": "passkey provider(클라우드 저장소)가 털린 경우. 진짜 passkey 를 구별 불가능한 미끼 passkey 사이에 섞어 두고, 훔친 credential 로 로그인하면 미끼가 쓰일 가능성이 높아 RP 가 침해를 탐지한다. honeywords(2013)와 같은 계보다."
+    },
+    {
+     "id": "AUT40-Q03",
+     "q": "행동 생체를 \"인증 요소\" 로 쓰지 않고 step-up 트리거로만 쓰는 이유는?",
+     "a": "오탐(진짜 사용자 거부) 비용이 크고, 모방·드리프트에 약하며, NIST 63B-4 가 session monitoring 으로 AAL 을 올려 주지 않고, 생체 정보라 개인정보 부담이 크다."
+    },
+    {
+     "id": "AUT40-Q04",
+     "q": "양자 컴퓨터가 와도 크게 바꾸지 않아도 되는 인증 부품과 반드시 바꿔야 하는 부품은?",
+     "a": "유지: 비밀번호 hash(Argon2id 등)·HMAC·TOTP 같은 대칭 부품. 교체: JWT·SAML 서명, WebAuthn credential 알고리즘, TLS 인증서 서명·키 교환. 키 교환은 harvest-now-decrypt-later 때문에 가장 급하다."
+    },
+    {
+     "id": "AUT40-Q05",
+     "q": "ML-DSA-65 로 서명한 JWT 를 cookie 에 넣으면 무슨 일이 생기나?",
+     "a": "서명만 약 3.3KB(base64url 약 4.4KB)라 cookie 4KB 한도를 넘어 브라우저가 cookie 를 저장하지 않는다. 로그인이 반복되는 증상. opaque session id 를 cookie 에, token 은 서버에 두면 피한다."
+    },
+    {
+     "id": "AUT40-Q06",
+     "q": "이중 키 병행으로 알고리즘을 바꿀 때 순서와 다운그레이드를 막는 지점은?",
+     "a": "새 키를 pending 으로 만들고 JWKS 에 먼저 게시 → 검증자가 새 alg 를 허용 → 새 키 active → 옛 키 retiring(검증만) → 최대 token 수명 뒤 retired 하고 accepted_algs 에서 옛 alg 제거. 마지막 제거를 빼면 다운그레이드 경로가 남는다. 검증 때 header alg 가 아니라 kid 로 찾은 키의 alg 를 기준으로 한다."
+    },
+    {
+     "id": "AUT40-Q07",
+     "q": "Fett·Küsters·Schmitz 의 OAuth 2.0 형식 분석(CCS 2016)이 실무 표준에 남긴 것은?",
+     "a": "새 공격(mix-up 등) 발견과 고친 OAuth 의 증명. mix-up 대책은 RFC 9207 iss parameter 와 RFC 9700 Security BCP 에 반영됐다."
+    },
+    {
+     "id": "AUT40-Q08",
+     "q": "비밀번호 주기 변경 강제를 없앤 근거 연구는?",
+     "a": "Zhang·Monrose·Reiter(CCS 2010) — 옛 비밀번호로 새 비밀번호를 상당 비율 맞힐 수 있어 강제 만료가 침입자를 쫓아내지 못함. 이것이 NIST 63B(2017) 이후 \"주기 변경 강제 금지\" 로 이어졌다."
+    },
+    {
+     "id": "AUT40-Q09",
+     "q": "NIST 63A-4 가 딥페이크에 대해 새로 요구하는 것은?",
+     "a": "§3.14: 진짜 센서에서 온 미디어인지 확인하는 기술 통제(가상 카메라·에뮬레이터 탐지)와 모든 제출 미디어 변조 분석은 SHALL, 위조 미디어 수동 탐지·생성형 AI 흔적 분석은 SHOULD. 원격 생체 비교에는 ISO/IEC 30107-3 PAD 가 SHALL."
+    },
+    {
+     "id": "AUT40-Q10",
+     "q": "AI agent 에 사용자 session cookie 를 넘기면 안 되는 이유와 대안은?",
+     "a": "범위 제한·감사(누가 대신했나)·개별 폐기가 모두 불가능하다. 대안은 좁은 scope 의 위임 OAuth token, RFC 8693 token exchange(act claim), 민감 작업은 CIBA·RAR 로 거래별 승인."
+    }
+   ]
+  }
+ ]
+}

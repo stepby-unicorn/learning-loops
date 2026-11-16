@@ -2,19 +2,38 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>학습 피드백 루프</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#007aff">
+<title>학습 온보딩</title>
+<!-- 디자인 시스템: Framework7 9.3.0 (MIT) CSS 만 쓴다. 동작은 assets/app.js -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/framework7@9.3.0/framework7-bundle.min.css" integrity="sha384-uXNo4N9qJQsAsakeLzu1knQWIq/bxhuX/a1txyOJ+T7+XR25IJ9NaOveXTy4+iUa" crossorigin="anonymous">
 <link rel="stylesheet" href="assets/style.css">
+<script>
+  // 테마: iPhone·iPad 는 iOS 모양, 그 밖은 Material 모양. 기기 설정이 어두우면 dark
+  document.documentElement.classList.add(/iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent) && "ontouchend" in document ? "ios" : "md");
+  if (matchMedia("(prefers-color-scheme: dark)").matches) document.documentElement.classList.add("dark");
+</script>
 </head>
 <body>
-<header class="site"><nav><a href="./">학습 피드백 루프</a><a href="process.html">프로세스</a></nav></header>
-<main>
-<h1>학습 주제</h1>
-<p class="muted">주제마다 회차 테스트로 처음 익히고, 통과한 카드는 정해진 날짜에 다시 점검합니다. 진행 방식은 <a href="process.html">프로세스</a>에 있습니다.</p>
-<div id="topics">불러오는 중…</div>
-<footer>진행 상태는 이 기기 브라우저에만 저장됩니다.</footer>
-</main>
+<div id="app" class="framework7-root">
+  <div class="panel-backdrop" id="backdrop"></div>
+  <div class="panel panel-left panel-cover" id="menu">
+    <div class="view"><div class="page">
+      <div class="navbar"><div class="navbar-bg"></div><div class="navbar-inner"><div class="title">학습 주제</div></div></div>
+      <div class="page-content" id="menu-content"></div>
+    </div></div>
+  </div>
+  <div class="view view-main"><div class="page" id="page">
+    <div class="navbar"><div class="navbar-bg"></div><div class="navbar-inner">
+      <div class="left"><a class="link icon-only" id="btn-menu" href="#" aria-label="메뉴 열기"><span class="ll-burger" aria-hidden="true"></span></a></div>
+      <div class="title" id="page-title">학습 온보딩</div>
+      <div class="right"></div>
+    </div></div>
+    <div class="toolbar tabbar toolbar-bottom hidden" id="tabbar"><div class="toolbar-inner" id="tabbar-inner"></div></div>
+    <div class="page-content" id="content">불러오는 중…</div>
+  </div></div>
+</div>
+<script src="assets/engine.js"></script>
 <script src="assets/app.js"></script>
-<script>renderIndex(document.getElementById("topics")).catch((e) => { document.getElementById("topics").textContent = e.message; });</script>
 </body>
 </html>

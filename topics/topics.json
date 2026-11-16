@@ -2,8 +2,21 @@
   "topics": [
     {
       "id": "learning-science",
+      "key": "LSC",
       "title": "학습 과학 기초",
-      "summary": "이 루프가 왜 이렇게 생겼는지 — 시험 효과·간격 효과·연속 재학습·피드백"
+      "summary": "이 사이트의 복습 방식이 왜 이렇게 생겼는지 — 시험 효과·간격 효과·연속 재학습·피드백",
+      "chapters": 2,
+      "items": 7,
+      "cards": 9
+    },
+    {
+      "id": "account-auth",
+      "key": "AUT",
+      "title": "계정·인증 학습·구현",
+      "summary": "",
+      "chapters": 42,
+      "items": 496,
+      "cards": 379
     }
   ]
 }

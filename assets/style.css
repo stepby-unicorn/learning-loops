@@ -1,73 +1,70 @@
+/* Framework7 위에 얹는 이 사이트 전용 조정. 색·간격은 Framework7 변수(--f7-*)를 쓴다. */
 :root {
-  --bg: #fafaf8;
-  --fg: #1f2328;
-  --muted: #656d76;
-  --line: #d8dee4;
-  --card: #ffffff;
-  --accent: #0b6bcb;
-  --ok: #1a7f37;
-  --warn: #9a6700;
-  --bad: #cf222e;
-  --radius: 10px;
+  --f7-font-family: -apple-system, system-ui, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  --f7-panel-width: min(86vw, 340px);
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0d1117;
-    --fg: #e6edf3;
-    --muted: #8d96a0;
-    --line: #30363d;
-    --card: #161b22;
-    --accent: #4493f8;
-    --ok: #3fb950;
-    --warn: #d29922;
-    --bad: #f85149;
-  }
-}
-* { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; }
-body {
-  margin: 0;
-  background: var(--bg);
-  color: var(--fg);
-  font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", "Segoe UI", sans-serif;
-}
-main { max-width: 760px; margin: 0 auto; padding: 16px 16px 64px; }
-header.site { border-bottom: 1px solid var(--line); background: var(--card); }
-header.site nav { max-width: 760px; margin: 0 auto; padding: 10px 16px; display: flex; gap: 16px; flex-wrap: wrap; }
-header.site a { color: var(--fg); text-decoration: none; font-weight: 600; }
-a { color: var(--accent); }
-h1 { font-size: 1.5rem; line-height: 1.3; margin: 16px 0 8px; }
-h2 { font-size: 1.2rem; margin: 32px 0 8px; padding-top: 8px; border-top: 1px solid var(--line); }
-h3 { font-size: 1.05rem; margin: 20px 0 6px; }
-p, li { word-break: keep-all; overflow-wrap: anywhere; }
-.muted { color: var(--muted); font-size: .9rem; }
-.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-table { border-collapse: collapse; width: 100%; font-size: .92rem; margin: 8px 0 16px; }
-th, td { border: 1px solid var(--line); padding: 6px 8px; text-align: left; vertical-align: top; }
-th { background: var(--card); }
-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .88em; background: var(--card); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
-.card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; margin: 12px 0; }
-.card h3 { margin-top: 0; }
-.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-.pill { display: inline-block; border: 1px solid var(--line); border-radius: 999px; padding: 0 10px; font-size: .82rem; color: var(--muted); }
-.pill.due { color: var(--bad); border-color: var(--bad); }
-.pill.ok { color: var(--ok); border-color: var(--ok); }
-button, .btn {
-  appearance: none; border: 1px solid var(--line); background: var(--card); color: var(--fg);
-  border-radius: 8px; padding: 10px 14px; font: inherit; font-weight: 600; cursor: pointer;
-  min-height: 44px; text-decoration: none; display: inline-flex; align-items: center; justify-content: center;
-}
-button.primary, .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-button.ok { border-color: var(--ok); color: var(--ok); }
-button.warn { border-color: var(--warn); color: var(--warn); }
-button.bad { border-color: var(--bad); color: var(--bad); }
-button:disabled { opacity: .45; cursor: default; }
-.grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-textarea { width: 100%; min-height: 96px; font: inherit; padding: 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
-.answer { border-left: 4px solid var(--accent); padding: 8px 12px; margin: 12px 0; background: var(--bg); white-space: pre-wrap; }
-.why { color: var(--muted); font-size: .92rem; white-space: pre-wrap; }
-.progress { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin: 8px 0 12px; }
-.progress > span { display: block; height: 100%; background: var(--accent); }
-ol.steps > li { margin: 6px 0; }
 .hidden { display: none !important; }
-footer { margin-top: 48px; color: var(--muted); font-size: .85rem; }
+.ll-muted { color: var(--f7-list-item-footer-text-color, #8e8e93); font-size: 14px; }
+
+/* 메뉴 버튼(아이콘 글꼴 없이 세 줄) */
+.ll-burger, .ll-burger::before, .ll-burger::after { display: block; width: 20px; height: 2px; background: currentColor; border-radius: 1px; position: relative; }
+.ll-burger::before, .ll-burger::after { content: ""; position: absolute; left: 0; }
+.ll-burger::before { top: -6px; }
+.ll-burger::after { top: 6px; }
+
+/* 서랍 메뉴: 펼친 주제 안 절 머리·현재 항목 */
+.ll-menu-section { padding: 12px 16px 4px; font-size: 12px; font-weight: 600; color: var(--f7-block-title-text-color, #6d6d72); list-style: none; }
+.ll-menu-items .item-title { white-space: normal; font-size: 15px; }
+.ll-current { background: var(--f7-list-item-pressed-bg-color, rgba(0, 0, 0, 0.08)); }
+
+/* 항목 단계 색 */
+.ll-stage { font-size: 16px; width: 20px; justify-content: center; }
+.ll-stage-unread { color: #8e8e93; }
+.ll-stage-read { color: var(--f7-color-blue, #007aff); }
+.ll-stage-tested { color: var(--f7-color-orange, #ff9500); }
+.ll-stage-mastered { color: var(--f7-color-green, #34c759); }
+
+/* 목차 한 줄 = 읽음 체크 + 항목 링크 */
+.ll-toc li.ll-toc-row { display: flex; align-items: stretch; }
+.ll-toc .ll-check { flex: 0 0 auto; padding-right: 0; min-width: 48px; }
+.ll-toc .ll-check .item-inner { display: none; }
+.ll-toc .ll-toc-link { flex: 1 1 auto; min-width: 0; padding-left: 4px; }
+.ll-toc .item-title { white-space: normal; }
+.ll-toc .item-after { font-size: 13px; }
+
+.ll-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+.ll-actions { margin-top: 12px; }
+.ll-topic-card { display: block; color: inherit; }
+.progressbar { margin: 8px 0; }
+
+/* 항목 본문: 휴대폰에서 읽기 좋은 글자 크기·줄 간격, 넓은 표·코드는 가로 스크롤 */
+.ll-article { font-size: 17px; line-height: 1.7; word-break: keep-all; overflow-wrap: anywhere; }
+.ll-article h1 { font-size: 24px; line-height: 1.35; margin: 4px 0 16px; }
+.ll-article h3 { font-size: 20px; margin: 24px 0 8px; }
+.ll-article h4, .ll-article h5 { margin: 20px 0 8px; }
+.ll-article pre { overflow-x: auto; padding: 12px; border-radius: 8px; background: rgba(127, 127, 127, 0.12); font-size: 14px; line-height: 1.5; }
+.ll-article code { font-size: 0.9em; background: rgba(127, 127, 127, 0.12); padding: 1px 4px; border-radius: 4px; }
+.ll-article pre code { background: none; padding: 0; }
+.ll-article img { max-width: 100%; height: auto; }
+.ll-table { overflow-x: auto; margin: 12px 0; }
+.ll-table table { border-collapse: collapse; font-size: 15px; min-width: 100%; }
+.ll-table th, .ll-table td { border: 1px solid rgba(127, 127, 127, 0.3); padding: 6px 8px; text-align: left; vertical-align: top; }
+.ll-callout { border-left: 4px solid var(--f7-theme-color); background: rgba(127, 127, 127, 0.08); padding: 8px 12px; border-radius: 6px; margin: 12px 0; }
+.ll-callout-title { font-weight: 600; margin: 0 0 4px; }
+.ll-callout-warning { border-left-color: var(--f7-color-orange, #ff9500); }
+.ll-wikilink { border-bottom: 1px dashed currentColor; }
+.ll-missing { color: #8e8e93; font-size: 14px; }
+
+/* 복습 카드 */
+.ll-question { font-size: 19px; line-height: 1.5; font-weight: 600; white-space: pre-wrap; margin: 0; }
+.ll-answer-text { font-size: 17px; line-height: 1.6; white-space: pre-wrap; margin: 0 0 8px; }
+.ll-why { font-size: 15px; line-height: 1.6; color: var(--f7-list-item-footer-text-color, #6d6d72); white-space: pre-wrap; }
+.ll-answer-input { width: 100%; min-height: 96px; box-sizing: border-box; font: inherit; font-size: 16px; padding: 10px; border-radius: 10px; border: 1px solid rgba(127, 127, 127, 0.4); background: transparent; color: inherit; }
+.ll-summary { white-space: pre-wrap; font-size: 13px; background: rgba(127, 127, 127, 0.12); padding: 10px; border-radius: 8px; }
+.ll-flashcard .card-header { gap: 8px; justify-content: flex-start; flex-wrap: wrap; }
+
+/* 아래 탭 막대가 있을 때 본문이 가리지 않게 */
+.page.ll-has-tabbar .page-content { padding-bottom: calc(var(--f7-toolbar-height, 56px) + var(--f7-safe-area-bottom, env(safe-area-inset-bottom)) + 16px); }
+.ll-chapter-title { font-size: 22px; font-weight: 700; line-height: 1.35; margin: 4px 0 8px; }
+.ll-hint { margin-top: 12px; font-size: 15px; color: var(--f7-list-item-footer-text-color, #6d6d72); }
+.ll-hint summary { cursor: pointer; color: var(--f7-theme-color); }
