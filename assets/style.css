@@ -33,6 +33,10 @@
 .ll-burger::before { top: -6px; }
 .ll-burger::after { top: 6px; }
 
+/* 머리줄 오른쪽 동기화 상태: 연결 안 됨이면 빨간 점 */
+.ll-sync-ico { position: relative; font-size: 20px; line-height: 1; }
+.ll-sync-ico.ll-sync-off::after { content: ""; position: absolute; right: -3px; top: -1px; width: 8px; height: 8px; border-radius: 50%; background: var(--f7-color-red, #ff3b30); }
+
 /* 서랍 메뉴: 펼친 주제 안 절 머리·현재 항목 */
 .ll-menu-section { padding: 12px 16px 4px; font-size: 12px; font-weight: 600; color: var(--f7-block-title-text-color, #6d6d72); list-style: none; }
 .ll-menu-items .item-title { white-space: normal; font-size: 15px; }

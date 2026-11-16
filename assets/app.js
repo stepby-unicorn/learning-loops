@@ -121,7 +121,8 @@ async function renderMenu(route) {
       <a class="item-link item-content" href="#/t/${enc(t.id)}"><div class="item-inner"><div class="item-title">${esc(t.title)}</div></div></a>${inner}</li>`;
   }));
   $("#menu-content").innerHTML = `<div class="list accordion-list list-strong ll-menu"><ul>
-    <li><a class="item-link item-content" href="#/"><div class="item-inner"><div class="item-title">전체 주제</div></div></a></li>${parts.join("")}</ul></div>`;
+    <li><a class="item-link item-content" href="#/"><div class="item-inner"><div class="item-title">전체 주제</div></div></a></li>
+    <li><a class="item-link item-content" href="#/settings"><div class="item-inner"><div class="item-title">동기화 설정</div><div class="item-after">${syncConfig() ? "연결됨" : "연결 안 됨"}</div></div></a></li>${parts.join("")}</ul></div>`;
   $("#menu-content .ll-current")?.scrollIntoView({ block: "center" });
 }
 
@@ -131,9 +132,17 @@ function setFrame(title, tabs) {
   document.title = `${title} · 학습 온보딩`;
   $("#tabbar").classList.toggle("hidden", !tabs);
   $("#page").classList.toggle("ll-has-tabbar", !!tabs);
+  updateSyncIcon();
   if (tabs) {
     $("#tabbar-inner").innerHTML = tabs.map((t) => `<a class="tab-link ${t.active ? "tab-link-active" : ""}" href="${t.href}"><span class="tabbar-label">${esc(t.label)}${t.badge ? ` <span class="badge color-red">${t.badge}</span>` : ""}</span></a>`).join("");
   }
+}
+// 머리줄 오른쪽 버튼: 동기화 연결 여부를 보여 주고 누르면 동기화 설정(#/settings)으로 간다
+function updateSyncIcon() {
+  const cfg = syncConfig();
+  const ico = $("#sync-ico");
+  ico.classList.toggle("ll-sync-off", !cfg);
+  $("#btn-sync-state").setAttribute("aria-label", cfg ? `동기화 연결됨 (${cfg.repo})` : "동기화 연결 안 됨 — 설정 열기");
 }
 function topicTabs(id, active, p) {
   return [
@@ -169,8 +178,14 @@ async function viewHome(root) {
       return `<div class="card"><div class="card-content card-content-padding">${esc(t.title)} — 읽지 못함: ${esc(e.message)}</div></div>`;
     }
   }));
+  const cfg = syncConfig();
+  const syncCard = cfg
+    ? `<div class="block"><a class="ll-muted" href="#/settings">GitHub 동기화 연결됨 · ${esc(cfg.repo)} — 모든 주제에 적용 ›</a></div>`
+    : `<a class="card card-outline ll-topic-card" href="#/settings"><div class="card-header">GitHub 동기화 연결 ›</div>
+        <div class="card-content card-content-padding"><p class="ll-muted">한 번 연결하면 모든 주제의 진행 상태가 기기 사이에 이어지고, 주제 「기록」 탭에서 결과를 보낼 수 있습니다.</p></div></a>`;
   root.innerHTML = `<div class="block-title block-title-large">학습 주제</div>
-    <div class="block"><p class="ll-muted">장의 항목을 읽고 체크하면 그 장 문제로 테스트하고, 정해진 날짜(1·3·7·21·60·180일 뒤)에 다시 점검합니다. 진행 상태는 이 기기 브라우저에만 저장됩니다.</p></div>
+    <div class="block"><p class="ll-muted">장의 항목을 읽고 체크하면 그 장 문제로 테스트하고, 정해진 날짜(1·3·7·21·60·180일 뒤)에 다시 점검합니다. 진행 상태는 이 기기 브라우저에 저장되고, 동기화를 연결하면 비공개 저장소에도 저장됩니다.</p></div>
+    ${syncCard}
     ${cards.join("") || `<div class="block">주제가 없습니다.</div>`}`;
 }
 
@@ -448,27 +463,17 @@ async function viewLog(root, id) {
   const syncBlock = cfg
     ? `<div class="block-title">GitHub 동기화</div>
       <div class="list list-strong inset list-dividers"><ul>
-        <li class="item-content"><div class="item-inner"><div class="item-title">저장소</div><div class="item-after">${esc(cfg.repo)}</div></div></li>
+        <li><a class="item-link item-content" href="#/settings"><div class="item-inner"><div class="item-title">저장소</div><div class="item-after">${esc(cfg.repo)}</div></div></a></li>
         <li class="item-content"><div class="item-inner"><div class="item-title">상태</div><div class="item-after" id="sync-status">${esc(syncStatus || "아직 안 함")}</div></div></li>
       </ul></div>
       <div class="block grid grid-gap">
         <button class="button button-fill button-large" id="btn-send">결과 보내기</button>
         <p id="send-out" class="ll-muted hidden"></p>
-        <div class="grid grid-cols-2 grid-gap">
-          <button class="button button-tonal" id="btn-sync">지금 동기화</button>
-          <button class="button button-outline color-red" id="btn-sync-off">이 기기 연결 끊기</button>
-        </div>
+        <button class="button button-tonal" id="btn-sync">지금 동기화</button>
       </div>`
-    : `<div class="block-title">GitHub 동기화 설정</div>
-      <div class="block"><p class="ll-muted">비공개 저장소와 fine-grained 토큰(그 저장소 하나, Contents: Read and write)을 넣으면 진행 상태가 기기 사이에 이어지고 「결과 보내기」로 리뷰 세션에 결과를 넘깁니다. 토큰은 이 기기 브라우저에만 저장됩니다.</p></div>
-      <div class="list list-strong inset"><ul>
-        <li class="item-content item-input"><div class="item-inner"><div class="item-title item-label">저장소 (owner/이름)</div><div class="item-input-wrap"><input type="text" id="sync-repo" value="${esc(SYNC_DEFAULT_REPO)}" autocapitalize="off" autocorrect="off" spellcheck="false"></div></div></li>
-        <li class="item-content item-input"><div class="item-inner"><div class="item-title item-label">토큰</div><div class="item-input-wrap"><input type="password" id="sync-token" placeholder="github_pat_…" autocomplete="off"></div></div></li>
-      </ul></div>
-      <div class="block grid grid-gap">
-        <button class="button button-fill button-large" id="btn-sync-save">확인하고 저장</button>
-        <p id="sync-err" class="ll-muted hidden"></p>
-      </div>`;
+    : `<div class="block-title">GitHub 동기화</div>
+      <div class="block"><p class="ll-muted">동기화가 연결되지 않았습니다. 한 번 연결하면 모든 주제에 적용됩니다.</p>
+        <a class="button button-fill button-large" href="#/settings">동기화 설정으로</a></div>`;
   root.innerHTML = `<div class="block-title block-title-medium">기록</div>
     ${syncBlock}
     <div class="block-title">직접 옮기기</div>
@@ -491,22 +496,6 @@ async function viewLog(root, id) {
       $("#sync-status").textContent = syncStatus;
     };
     $("#btn-sync").onclick = async () => { $("#sync-status").textContent = "동기화 중…"; await runSync(id); $("#sync-status").textContent = syncStatus; };
-    $("#btn-sync-off").onclick = () => { if (confirm("이 기기에서 토큰을 지웁니다. 저장소의 기록은 그대로 남습니다.")) { saveSyncConfig(null); syncStatus = ""; route(); } };
-  } else {
-    $("#btn-sync-save").onclick = async () => {
-      const next = { repo: $("#sync-repo").value.trim(), token: $("#sync-token").value.trim() };
-      const err = $("#sync-err");
-      try {
-        if (!/^[\w.-]+\/[\w.-]+$/.test(next.repo) || !next.token) throw new Error("저장소(owner/이름)와 토큰을 넣으세요.");
-        err.classList.remove("hidden");
-        err.textContent = "확인 중…";
-        await checkSyncConfig(next);
-        saveSyncConfig(next);
-        pulled.clear();
-        await runSync(id);
-        route();
-      } catch (e) { err.classList.remove("hidden"); err.textContent = e.message; }
-    };
   }
   $("#btn-summary").onclick = async () => {
     const text = feedbackSummary(topic, loadState(id));
@@ -534,9 +523,59 @@ async function viewLog(root, id) {
   };
 }
 
+// ---------- 동기화 설정: 기기마다 한 번, 모든 주제에 적용 ----------
+async function syncAllTopics() {
+  for (const t of await getTopics()) { pulled.add(t.id); await runSync(t.id); }
+}
+async function viewSettings(root) {
+  setFrame("동기화 설정", null);
+  const cfg = syncConfig();
+  const note = `<div class="block"><p class="ll-muted">저장소와 토큰은 이 기기 브라우저에 한 번 저장되고 모든 주제에 적용됩니다. 다시 넣어야 하는 때: 다른 기기·다른 브라우저, 홈 화면에 추가한 앱으로 열 때(브라우저와 저장 공간이 따로임), 브라우저 데이터를 지웠을 때, 토큰 만료일이 지났을 때.</p></div>`;
+  root.innerHTML = cfg
+    ? `<div class="block-title block-title-medium">GitHub 동기화</div>
+      <div class="list list-strong inset list-dividers"><ul>
+        <li class="item-content"><div class="item-inner"><div class="item-title">저장소</div><div class="item-after">${esc(cfg.repo)}</div></div></li>
+        <li class="item-content"><div class="item-inner"><div class="item-title">상태</div><div class="item-after" id="sync-status">${esc(syncStatus || "연결됨")}</div></div></li>
+      </ul></div>
+      <div class="block grid grid-gap">
+        <button class="button button-tonal" id="btn-sync-all">모든 주제 지금 동기화</button>
+        <button class="button button-outline color-red" id="btn-sync-off">이 기기 연결 끊기</button>
+      </div>${note}`
+    : `<div class="block-title block-title-medium">GitHub 동기화 설정</div>
+      <div class="block"><p class="ll-muted">비공개 저장소와 fine-grained 토큰(그 저장소 하나, Contents: Read and write)을 넣으면 진행 상태가 기기 사이에 이어지고 주제 「기록」 탭의 「결과 보내기」로 리뷰 세션에 결과를 넘깁니다.</p></div>
+      <div class="list list-strong inset"><ul>
+        <li class="item-content item-input"><div class="item-inner"><div class="item-title item-label">저장소 (owner/이름)</div><div class="item-input-wrap"><input type="text" id="sync-repo" value="${esc(SYNC_DEFAULT_REPO)}" autocapitalize="off" autocorrect="off" spellcheck="false"></div></div></li>
+        <li class="item-content item-input"><div class="item-inner"><div class="item-title item-label">토큰</div><div class="item-input-wrap"><input type="password" id="sync-token" placeholder="github_pat_…" autocomplete="off"></div></div></li>
+      </ul></div>
+      <div class="block grid grid-gap">
+        <button class="button button-fill button-large" id="btn-sync-save">확인하고 저장</button>
+        <p id="sync-err" class="ll-muted hidden"></p>
+      </div>${note}`;
+  if (cfg) {
+    $("#btn-sync-all").onclick = async () => { $("#sync-status").textContent = "동기화 중…"; await syncAllTopics(); $("#sync-status").textContent = syncStatus; };
+    $("#btn-sync-off").onclick = () => { if (confirm("이 기기에서 토큰을 지웁니다. 저장소의 기록은 그대로 남습니다.")) { saveSyncConfig(null); syncStatus = ""; pulled.clear(); route(); } };
+    return;
+  }
+  $("#btn-sync-save").onclick = async () => {
+    const next = { repo: $("#sync-repo").value.trim(), token: $("#sync-token").value.trim() };
+    const err = $("#sync-err");
+    try {
+      if (!/^[\w.-]+\/[\w.-]+$/.test(next.repo) || !next.token) throw new Error("저장소(owner/이름)와 토큰을 넣으세요.");
+      err.classList.remove("hidden");
+      err.textContent = "확인 중…";
+      await checkSyncConfig(next);
+      saveSyncConfig(next);
+      pulled.clear();
+      await syncAllTopics();
+      route();
+    } catch (e) { err.classList.remove("hidden"); err.textContent = e.message; }
+  };
+}
+
 // ---------- 주소 해석 ----------
 function parseRoute() {
   const parts = location.hash.replace(/^#\/?/, "").split("/").map(decodeURIComponent);
+  if (parts[0] === "settings") return { view: "settings" };
   if (parts[0] !== "t" || !parts[1]) return { view: "home" };
   const topic = parts[1];
   if (parts[2] === "c" && parts[3]) return { view: "chapter", topic, chapter: parts[3] };
@@ -565,6 +604,7 @@ async function route() {
     else if (r.view === "done") await viewDone(root, r.topic, r.chapter);
     else if (r.view === "review") await viewReview(root, r.topic);
     else if (r.view === "log") await viewLog(root, r.topic);
+    else if (r.view === "settings") await viewSettings(root);
     await renderMenu(r);
   } catch (e) {
     root.innerHTML = `<div class="block">불러오지 못했습니다: ${esc(e.message)}</div>`;
