@@ -74,6 +74,18 @@
 .ll-table { overflow-x: auto; margin: 12px 0; }
 .ll-table table { border-collapse: collapse; font-size: 15px; min-width: 100%; }
 .ll-table th, .ll-table td { border: 1px solid rgba(127, 127, 127, 0.3); padding: 6px 8px; text-align: left; vertical-align: top; }
+/* 좁은 화면: 표를 행마다 카드로 — 첫 칸 = 카드 제목, 나머지 칸 = 머리 이름(data-label) 아래 값 */
+@media (max-width: 600px) {
+  .ll-table { overflow-x: visible; }
+  .ll-table table, .ll-table tbody, .ll-table tr, .ll-table td { display: block; width: auto; min-width: 0; }
+  .ll-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .ll-table tr { border: 1px solid rgba(127, 127, 127, 0.3); border-radius: 10px; padding: 10px 12px; margin: 0 0 10px; }
+  .ll-table td { border: none; padding: 4px 0; }
+  .ll-table td:empty { display: none; }
+  .ll-table td::before { content: attr(data-label); display: block; font-size: 13px; font-weight: 600; color: var(--f7-list-item-footer-text-color, #6d6d72); }
+  .ll-table td:first-child { font-weight: 600; padding-top: 0; }
+  .ll-table td:first-child::before { display: none; }
+}
 .ll-callout { border-left: 4px solid var(--f7-theme-color); background: rgba(127, 127, 127, 0.08); padding: 8px 12px; border-radius: 6px; margin: 12px 0; }
 .ll-callout-title { font-weight: 600; margin: 0 0 4px; }
 .ll-callout-warning { border-left-color: var(--f7-color-orange, #ff9500); }

@@ -68,7 +68,9 @@ export function markdownToHtml(md) {
       i += 2;
       const rows = [];
       while (i < lines.length && /^\|.*\|\s*$/.test(lines[i])) rows.push(cells(lines[i++]));
-      out.push(`<div class="ll-table"><table><thead><tr>${head.map((c) => `<th>${inline(c)}</th>`).join("")}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${inline(c)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`);
+      // 좁은 화면은 행마다 카드로 그린다 — 칸마다 머리 이름을 data-label 로 붙여 CSS 가 「머리: 값」 으로 보여 줌
+      const labels = head.map((c) => inline(c).replace(/<[^>]+>/g, ""));
+      out.push(`<div class="ll-table"><table><thead><tr>${head.map((c) => `<th>${inline(c)}</th>`).join("")}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c, k) => `<td data-label="${labels[k] ?? ""}">${inline(c)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`);
       continue;
     }
     if (/^\s*([-*+]|\d+[.)])\s+/.test(line)) {
