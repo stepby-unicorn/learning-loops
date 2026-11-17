@@ -1,6 +1,6 @@
 // 변환기 규칙 시험: node tests/build.test.mjs
 import assert from "node:assert/strict";
-import { parseToc, parseQuestions, buildChapter, findDenied, findSecrets, dropVaultCodes } from "../tools/build_topic_from_obsidian_notes.mjs";
+import { parseToc, parseQuestions, buildChapter, findDenied, findSecrets, dropVaultCodes, applyReplace } from "../tools/build_topic_from_obsidian_notes.mjs";
 
 let n = 0;
 const t = (name, fn) => { fn(); n++; console.log(`ok ${n} ${name}`); };
@@ -67,5 +67,17 @@ t("선택지 줄 → choices·answerIndex, 답·이유는 그대로", () => {
 t("굵은 정답이 없거나 둘이면 오류", () => {
   assert.throws(() => parseQuestions(["> [!question]- LSC01-Q02 질문?", "> 답", "> 선택지: 가 | 나", ""], "LSC01"), /굵게 0/);
   assert.throws(() => parseQuestions(["> [!question]- LSC01-Q02 질문?", "> 답", "> 선택지: **가** | **나**", ""], "LSC01"), /굵게 2/);
+});
+t("pages_replace 는 긴 말부터 한 번에 바꾸고 바꾼 결과를 다시 바꾸지 않는다", () => {
+  const pairs = { "LP 포털": "투자자 포털", "AI Portal": "사내 AI 포털", "AI 포털": "사내 AI 포털", "Circle": "사내 그룹웨어" };
+  assert.equal(applyReplace("## LP 포털 어드민 적용\nCircle SSO 로 AI Portal 진입, AI 포털 a.b(x)", pairs),
+    "## 투자자 포털 어드민 적용\n사내 그룹웨어 SSO 로 사내 AI 포털 진입, 사내 AI 포털 a.b(x)");
+  assert.equal(applyReplace("그대로", {}), "그대로");
+});
+t("pages_replace 로 바꾼 절 제목은 항목 ID 와 화면 제목에 같이 들어간다", () => {
+  const md = applyReplace("# AUT01 장\n\n## LP 포털 적용\n본문 LP 포털\n", { "LP 포털": "투자자 포털" });
+  const ch = buildChapter(md, "AUT01", []);
+  assert.deepEqual([ch.items[0].id, ch.items[0].title], ["AUT01#투자자 포털 적용", "투자자 포털 적용"]);
+  assert.ok(!ch.items[0].html.includes("LP 포털"));
 });
 console.log(`${n}/${n} 통과`);

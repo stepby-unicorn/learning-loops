@@ -5,11 +5,13 @@
 // 쓰는 법:
 //   node tools/build_topic_from_obsidian_notes.mjs <입구 노트.md> [--slug account-auth] [--key AUT]
 //        [--title 제목] [--summary 한 줄] [--exclude "절 이름,절 이름"] [--rename "옛 절=보일 제목,…"]
-//        [--deny-file 금지어.txt] [--out topics] [--dry-run]
+//        [--replace "옛 말=보일 말,…"] [--deny-file 금지어.txt] [--out topics] [--dry-run]
 //
 // 읽는 규칙(학습 노트 스킬 「항목 단위」):
 //   - 입구 노트 앞머리 learning_key·learning_slug(없으면 --key·--slug), pages_exclude(빼고 올릴 장 절 이름 목록),
-//     pages_rename(`옛 절=보일 제목` 목록 — 항목 ID 는 옛 절 이름 그대로, 화면 제목만 바꿈)
+//     pages_rename(`옛 절=보일 제목` 목록 — 항목 ID 는 옛 절 이름 그대로, 화면 제목만 바꿈),
+//     pages_replace(`옛 말=보일 말` 목록 — 입구·장 노트 원문 전체(제목·항목 ID·본문·문항)에서 바꾸고,
+//     옛 말은 금지어에 더해 남으면 쓰지 않음. 항목 ID 가 바뀌면 그 항목 진행은 처음부터)
 //   - 입구 `## 목차` 의 `[[<KEY>## …]]` 로 시작하는 목록 줄 순서 = 장 순서, 그 위 `### ` 머리 = 부(part)
 //   - 장 노트 `## ` 절 = 읽음 항목(ID `<장>#<절 제목>`). `검수`·`출처`·`이해 확인 질문` 과 제외 절은 항목이 아니다
 //   - 문항 = `## 이해 확인 질문` 안 `> [!question]- <장>-Q03 질문` callout, 답 = 정답 → `이유:` → `단서:`.
@@ -205,6 +207,14 @@ export function findSecrets(text) {
   return hits;
 }
 
+// 긴 말부터 한 번에 바꾼다 — 바꾼 결과를 다시 바꾸지 않는다
+export function applyReplace(text, pairs) {
+  const olds = Object.keys(pairs).sort((a, b) => b.length - a.length);
+  if (!olds.length) return text;
+  const re = new RegExp(olds.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"), "g");
+  return text.replace(re, (m) => pairs[m]);
+}
+
 function parseRename(list) {
   const rename = {};
   for (const pair of list) {
@@ -218,12 +228,14 @@ function main() {
   const args = parseArgs(process.argv.slice(2));
   const entry = args._[0];
   if (!entry) { console.error("입구 노트 경로가 필요합니다"); process.exit(2); }
-  const { fm, body } = splitFrontmatter(fs.readFileSync(entry, "utf8"));
+  const { fm, body: rawBody } = splitFrontmatter(fs.readFileSync(entry, "utf8"));
+  const asList = (v) => (Array.isArray(v) ? v : v ? [v] : []);
+  const replace = parseRename([...asList(fm.pages_replace), ...(args.replace ? args.replace.split(",") : [])]);
+  const body = applyReplace(rawBody, replace);
   const key = args.key || fm.learning_key;
   const slug = args.slug || fm.learning_slug;
   if (!key || !slug) { console.error("learning_key·learning_slug(또는 --key·--slug)가 필요합니다"); process.exit(2); }
   const exclude = [...(Array.isArray(fm.pages_exclude) ? fm.pages_exclude : fm.pages_exclude ? [fm.pages_exclude] : []), ...(args.exclude ? args.exclude.split(",").map((s) => s.trim()) : [])];
-  const asList = (v) => (Array.isArray(v) ? v : v ? [v] : []);
   const rename = parseRename([...asList(fm.pages_rename), ...(args.rename ? args.rename.split(",") : [])]);
   const toc = parseToc(body, key);
   if (!toc.length) { console.error(`목차에 [[${key}## …]] 줄이 없습니다`); process.exit(2); }
@@ -247,14 +259,14 @@ function main() {
   for (const c of toc) {
     const file = files.find((f) => path.basename(f).startsWith(c.id + " ") || path.basename(f) === `${c.id}.md`);
     if (!file) { missing.push(c.id); continue; }
-    const ch = buildChapter(fs.readFileSync(file, "utf8"), c.id, exclude, rename);
+    const ch = buildChapter(applyReplace(fs.readFileSync(file, "utf8"), replace), c.id, exclude, rename);
     index.chapters.push({ id: ch.id, title: ch.title, part: c.part, summary: ch.summary, items: ch.items.map(({ id, title }) => ({ id, title })), cards: ch.cards });
     bodies.push({ id: ch.id, title: ch.title, items: ch.items });
   }
 
   const outDir = path.join(args.out || "topics", slug);
   const outputs = [[path.join(outDir, "index.json"), JSON.stringify(index, null, 1)], ...bodies.map((b) => [path.join(outDir, `${b.id}.json`), JSON.stringify(b)])];
-  const denied = readDeny(args["deny-file"]);
+  const denied = [...readDeny(args["deny-file"]), ...Object.keys(replace)];
   const hits = [];
   for (const [file, text] of outputs) {
     for (const w of findDenied(text, denied)) hits.push(`${path.basename(file)}: 금지어 ${w}`);
@@ -266,7 +278,7 @@ function main() {
     items: index.chapters.reduce((n, c) => n + c.items.length, 0),
     cards: index.chapters.reduce((n, c) => n + c.cards.length, 0),
     noCards: index.chapters.filter((c) => !c.cards.length).map((c) => c.id),
-    excluded: exclude, renamed: rename, denied: hits.length,
+    excluded: exclude, renamed: rename, replaced: replace, denied: hits.length,
   };
   if (hits.length) {
     console.error(`금지어 ${hits.length}건 — 쓰지 않음:\n${hits.slice(0, 30).join("\n")}`);

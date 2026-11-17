@@ -39,7 +39,7 @@
 node tools/build_topic_from_obsidian_notes.mjs "<입구 노트>.md" [--deny-file <금지어 파일>]
 ```
 
-- 입구 노트 앞머리 `learning_key`(대문자 3글자)·`learning_slug`(영문 kebab, 주소), 선택 `learning_summary`·`pages_exclude`(빼고 올릴 절 이름)·`pages_rename`(`옛 절=보일 제목`, 화면 제목만 바뀌고 항목 ID 는 그대로). 앞머리가 없으면 같은 이름의 옵션(`--key`·`--slug`·`--exclude`·`--rename`)으로 준다.
+- 입구 노트 앞머리 `learning_key`(대문자 3글자)·`learning_slug`(영문 kebab, 주소), 선택 `learning_summary`·`pages_exclude`(빼고 올릴 절 이름)·`pages_rename`(`옛 절=보일 제목`, 화면 제목만 바뀌고 항목 ID 는 그대로)·`pages_replace`(`옛 말=보일 말`, 노트 원문 전체에서 바꾸고 옛 말은 금지어로 검사 — 항목 ID 도 바뀌어 그 항목 진행은 처음부터). 앞머리가 없으면 같은 이름의 옵션(`--key`·`--slug`·`--exclude`·`--rename`·`--replace`)으로 준다.
 - 본문의 볼트 세션·결정 번호(`S294`·`S1000043-D1` 꼴)는 걷어 내거나 "내부 결정"·"내부 기록" 으로 바꾼다. 해시 방식 이름 `S256`·`S384`·`S512` 는 그대로 둔다.
 - 입구 `## 목차` 의 `[[<KEY>## …]]` 목록 줄 순서가 장 순서, 그 위 `### ` 머리가 부다.
 - 장 노트 `## ` 절이 읽음 항목(ID `<장>#<절 제목>`)이다. `검수`·`출처`·`이해 확인 질문` 절은 항목이 아니다.
