@@ -13,7 +13,7 @@
       "id": "account-auth",
       "key": "AUT",
       "title": "계정·인증 학습·구현",
-      "summary": "",
+      "summary": "로그인·계정·인증의 방법별 장단점을 개념부터 설계·구현까지 장마다 읽고 테스트",
       "chapters": 42,
       "items": 496,
       "cards": 379
