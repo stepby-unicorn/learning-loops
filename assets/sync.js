@@ -4,6 +4,16 @@
 //   progress/<주제>.json                 기기들이 합쳐 쓰는 진행 상태(mergeStates)
 //   results/<주제>/<YYYY-MM-DD-HHMM>.md  「결과 보내기」 한 번 = 파일 하나(리뷰 세션이 gh api·git pull 로 읽음)
 const SYNC_KEY = "ll2-sync";
+// 이 기기에서 한 동기화 내역(최근 SYNC_LOG_MAX 건, 기기 사이에 합치지 않음) — 설정 화면 「동기화 내역」
+const SYNC_LOG_KEY = "ll2-sync-log";
+const SYNC_LOG_MAX = 50;
+function syncLog() {
+  try { return JSON.parse(localStorage.getItem(SYNC_LOG_KEY)) || []; } catch { return []; }
+}
+function addSyncLog(entry) {
+  const log = [{ at: new Date().toISOString(), ...entry }, ...syncLog()].slice(0, SYNC_LOG_MAX);
+  localStorage.setItem(SYNC_LOG_KEY, JSON.stringify(log));
+}
 const SYNC_DEFAULT_REPO = "stepby-unicorn/learning-loops-data";
 
 function syncConfig() {
@@ -41,6 +51,7 @@ async function ghPut(cfg, path, text, sha, message) {
 }
 
 // 원격 사본을 받아 이 기기 상태와 합치고, 원격에 없던 게 있으면 다시 올린다. 그 사이 다른 기기가 올렸으면 한 번 더 받아 합친다.
+// 돌려주는 값: { state: 합친 상태, pushed: 원격에 올렸는지 }, 설정이 없으면 null
 async function syncTopic(topicId, local) {
   const cfg = syncConfig();
   if (!cfg) return null;
@@ -49,10 +60,10 @@ async function syncTopic(topicId, local) {
     const remote = await ghGet(cfg, path);
     const remoteState = remote.text ? mergeStates(JSON.parse(remote.text).state, emptyState()) : null;
     const merged = mergeStates(local, remoteState);
-    if (remoteState && JSON.stringify(remoteState) === JSON.stringify(merged)) return merged;
+    if (remoteState && JSON.stringify(remoteState) === JSON.stringify(merged)) return { state: merged, pushed: false };
     const body = JSON.stringify({ topic: topicId, updatedAt: new Date().toISOString(), state: merged });
     const put = await ghPut(cfg, path, body, remote.sha, `progress: ${topicId}`);
-    if (!put.conflict) return merged;
+    if (!put.conflict) return { state: merged, pushed: true };
   }
   throw new Error("다른 기기와 동시에 저장해 충돌했습니다. 잠시 뒤 다시 동기화하세요.");
 }

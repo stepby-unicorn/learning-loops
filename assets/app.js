@@ -48,32 +48,47 @@ const pulled = new Set();
 // 주제마다 따로 기다린다 — 다른 주제를 열어도 앞 주제 push 가 취소되지 않게
 const pushTimers = new Map();
 let inSession = false;
-let syncStatus = "";
 function schedulePush(id) {
   if (!syncConfig()) return;
   clearTimeout(pushTimers.get(id));
-  pushTimers.set(id, setTimeout(() => runSync(id), 2000));
+  pushTimers.set(id, setTimeout(() => runSync(id, "저장 뒤"), 2000));
 }
-async function runSync(id) {
+// why = 동기화를 부른 계기(내역에 남김): 주제 열기·저장 뒤·화면 떠남·당겨서·지금 동기화·모든 주제·결과 보내기
+async function runSync(id, why) {
   clearTimeout(pushTimers.get(id));
   pushTimers.delete(id);
   const before = localStorage.getItem(STORE_PREFIX + id);
   try {
-    const merged = await syncTopic(id, loadState(id));
-    if (!merged) return false;
+    const out = await syncTopic(id, loadState(id));
+    if (!out) return false;
     // 받는 사이 이 기기에서 또 저장했으면 덮지 않고 다음 동기화에 맡긴다
-    if (localStorage.getItem(STORE_PREFIX + id) !== before) { schedulePush(id); return false; }
-    const text = JSON.stringify(merged);
+    if (localStorage.getItem(STORE_PREFIX + id) !== before) {
+      addSyncLog({ topic: id, why, result: "미룸", detail: "받는 사이 이 기기에서 또 저장함 — 2초 뒤 다시" });
+      schedulePush(id);
+      return false;
+    }
+    const text = JSON.stringify(out.state);
     localStorage.setItem(STORE_PREFIX + id, text);
-    syncStatus = `동기화 ${new Date().toTimeString().slice(0, 5)}`;
-    return text !== before;
+    const received = text !== before;
+    addSyncLog({ topic: id, why, result: received && out.pushed ? "받고 올림" : received ? "받음" : out.pushed ? "올림" : "그대로" });
+    return received;
   } catch (e) {
-    syncStatus = `동기화 실패: ${e.message}`;
+    addSyncLog({ topic: id, why, result: "실패", detail: e.message });
     return false;
   }
 }
+// 내역 한 줄: 「11/17 11:30 · 저장 뒤 · 올림」 — 시각은 이 기기 시간대
+function syncLogLine(e, title) {
+  const d = new Date(e.at);
+  const when = `${d.getMonth() + 1}/${d.getDate()} ${d.toTimeString().slice(0, 5)}`;
+  return [when, title, e.why, e.result].filter(Boolean).join(" · ") + (e.detail ? ` — ${e.detail}` : "");
+}
+function lastSyncText(id) {
+  const e = syncLog().find((x) => x.topic === id);
+  return e ? syncLogLine(e) : "아직 안 함";
+}
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "hidden") for (const id of [...pushTimers.keys()]) runSync(id);
+  if (document.visibilityState === "hidden") for (const id of [...pushTimers.keys()]) runSync(id, "화면 떠남");
 });
 function toggleRead(id, itemId, on) {
   const s = loadState(id);
@@ -551,7 +566,8 @@ async function viewLog(root, id) {
     ? `<div class="block-title">GitHub 동기화</div>
       <div class="list list-strong inset list-dividers"><ul>
         <li><a class="item-link item-content" href="#/settings"><div class="item-inner"><div class="item-title">저장소</div><div class="item-after">${esc(cfg.repo)}</div></div></a></li>
-        <li class="item-content"><div class="item-inner"><div class="item-title">상태</div><div class="item-after" id="sync-status">${esc(syncStatus || "아직 안 함")}</div></div></li>
+        <li class="item-content"><div class="item-inner"><div class="item-title">마지막 동기화</div><div class="item-after" id="sync-status">${esc(lastSyncText(id))}</div></div></li>
+        <li><a class="item-link item-content" href="#/settings"><div class="item-inner"><div class="item-title">동기화 내역</div></div></a></li>
       </ul></div>
       <div class="block grid grid-gap">
         <button class="button button-fill button-large" id="btn-send">결과 보내기</button>
@@ -575,13 +591,13 @@ async function viewLog(root, id) {
       out.classList.remove("hidden");
       out.textContent = "보내는 중…";
       try {
-        await runSync(id);
+        await runSync(id, "결과 보내기");
         const path = await sendResult(id, feedbackSummary(topic, loadState(id)));
         out.textContent = `보냄: ${path} — 리뷰 세션에 「결과 보냈음」 이라고 말하면 읽습니다.`;
       } catch (e) { out.textContent = `보내지 못함: ${e.message}`; }
-      $("#sync-status").textContent = syncStatus;
+      $("#sync-status").textContent = lastSyncText(id);
     };
-    $("#btn-sync").onclick = async () => { $("#sync-status").textContent = "동기화 중…"; await runSync(id); $("#sync-status").textContent = syncStatus; };
+    $("#btn-sync").onclick = async () => { $("#sync-status").textContent = "동기화 중…"; await runSync(id, "지금 동기화"); $("#sync-status").textContent = lastSyncText(id); };
   }
   $("#btn-summary").onclick = async () => {
     const text = feedbackSummary(topic, loadState(id));
@@ -611,23 +627,33 @@ async function viewLog(root, id) {
 
 // ---------- 동기화 설정: 기기마다 한 번, 모든 주제에 적용 ----------
 async function syncAllTopics() {
-  for (const t of await getTopics()) { pulled.add(t.id); await runSync(t.id); }
+  for (const t of await getTopics()) { pulled.add(t.id); await runSync(t.id, "모든 주제"); }
 }
 async function viewSettings(root) {
   setFrame("동기화 설정", null);
   const cfg = syncConfig();
+  const titles = new Map((await getTopics()).map((t) => [t.id, t.title]));
+  const logHtml = () => {
+    const log = syncLog();
+    return log.length
+      ? `<ul>${log.map((e) => `<li class="item-content"><div class="item-inner"><div class="item-title ll-sync-log${e.result === "실패" ? " ll-sync-log-fail" : ""}">${esc(syncLogLine(e, titles.get(e.topic) || e.topic))}</div></div></li>`).join("")}</ul>`
+      : `<ul><li class="item-content"><div class="item-inner"><div class="item-title ll-muted">아직 없음</div></div></li></ul>`;
+  };
+  const lastAll = () => (syncLog()[0] ? syncLogLine(syncLog()[0], titles.get(syncLog()[0].topic)) : "아직 안 함");
   const note = `<div class="block"><details class="ll-hint"><summary>다시 넣어야 하는 때</summary><p>저장소와 토큰은 이 기기 브라우저에 한 번 저장되고 모든 주제에 적용돼요. 다른 기기·다른 브라우저, 홈 화면에 추가한 앱으로 열 때(브라우저와 저장 공간이 따로임), 브라우저 데이터를 지웠을 때, 토큰 만료일이 지났을 때 다시 넣어요.</p></details></div>`;
   root.innerHTML = cfg
     ? `<div class="block-title block-title-medium">GitHub 동기화</div>
       <div class="block ll-sync-state">
         <div class="ll-sync-state-head"><i class="ll-dot ll-dot-on"></i>연결됨</div>
-        <p class="ll-muted">마지막 동기화: <span id="sync-status">${esc(syncStatus || "아직 안 함")}</span></p>
+        <p class="ll-muted">마지막 동기화: <span id="sync-status">${esc(lastAll())}</span></p>
         <p class="ll-muted">저장소: ${esc(cfg.repo)}</p>
       </div>
       <div class="block grid grid-gap">
         <button class="button button-fill button-large" id="btn-sync-all">모든 주제 지금 동기화</button>
         <button class="button color-red" id="btn-sync-off">이 기기 연결 끊기</button>
-      </div>${note}`
+      </div>
+      <div class="block-title">동기화 내역 <span class="ll-muted">이 기기 최근 ${SYNC_LOG_MAX}건</span></div>
+      <div class="list list-strong inset list-dividers" id="sync-log">${logHtml()}</div>${note}`
     : `<div class="block-title block-title-medium">GitHub 동기화 설정</div>
       <div class="block"><p class="ll-muted">비공개 저장소와 fine-grained 토큰(그 저장소 하나, Contents: Read and write)을 넣으면 진행 상태가 기기 사이에 이어지고 주제 「기록」 탭의 「결과 보내기」로 리뷰 세션에 결과를 넘깁니다.</p></div>
       <div class="list list-strong inset"><ul>
@@ -639,8 +665,8 @@ async function viewSettings(root) {
         <p id="sync-err" class="ll-muted hidden"></p>
       </div>${note}`;
   if (cfg) {
-    $("#btn-sync-all").onclick = async () => { $("#sync-status").textContent = "동기화 중…"; await syncAllTopics(); $("#sync-status").textContent = syncStatus; };
-    $("#btn-sync-off").onclick = () => { if (confirm("이 기기에서 토큰을 지웁니다. 저장소의 기록은 그대로 남습니다.")) { saveSyncConfig(null); syncStatus = ""; pulled.clear(); route(); } };
+    $("#btn-sync-all").onclick = async () => { $("#sync-status").textContent = "동기화 중…"; await syncAllTopics(); $("#sync-status").textContent = lastAll(); $("#sync-log").innerHTML = logHtml(); };
+    $("#btn-sync-off").onclick = () => { if (confirm("이 기기에서 토큰을 지웁니다. 저장소의 기록은 그대로 남습니다.")) { saveSyncConfig(null); pulled.clear(); route(); } };
     return;
   }
   $("#btn-sync-save").onclick = async () => {
@@ -672,16 +698,21 @@ function parseRoute() {
   if (parts[2] === "log") return { view: "log", topic };
   return { view: "toc", topic };
 }
-async function route() {
+// soft = 같은 화면을 다시 그릴 때(동기화로 바뀜·당겨서 새로고침) — 스크롤 위치를 지키고 0.15초 흐리게 바꿔 깜빡임을 줄인다
+const SOFT_FADE_MS = 150;
+async function route(soft) {
+  soft = soft === true;
   const r = parseRoute();
   const root = $("#content");
+  const keepTop = soft ? root.scrollTop : 0;
+  if (soft) { root.classList.add("ll-fading"); await new Promise((ok) => setTimeout(ok, SOFT_FADE_MS)); }
   openMenu(false);
   inSession = false;
   // 주제를 이 페이지에서 처음 열면 저장소 사본을 받아 합치고, 바뀌었으면 화면을 다시 그린다(회차 중이면 그리지 않음)
   if (r.topic && syncConfig() && !pulled.has(r.topic)) {
     pulled.add(r.topic);
     const hash = location.hash;
-    runSync(r.topic).then((changed) => { if (changed && !inSession && location.hash === hash) route(); });
+    runSync(r.topic, "주제 열기").then((changed) => { if (changed && !inSession && location.hash === hash) route(true); });
   }
   try {
     if (r.view === "home") await viewHome(root);
@@ -696,10 +727,28 @@ async function route() {
   } catch (e) {
     root.innerHTML = `<div class="block">불러오지 못했습니다: ${esc(e.message)}</div>`;
   }
+  if (soft) { root.scrollTop = keepTop; root.classList.remove("ll-fading"); }
 }
 // 당겨서 새로고침 — 스크롤이 문서가 아니라 #content 안에서 일어나 Safari 기본 동작이 걸리지 않는다.
-// 맨 위에서 PTR_PULL 넘게 당겼다 놓으면 지금 주제를 동기화한 뒤 페이지를 다시 연다. 테스트 회차 중·서랍 메뉴가 열렸을 때는 끈다.
-const PTR_PULL = 80;
+// 맨 위에서 당기면 본문이 손가락을 절반 속도로 따라오고, PTR_PULL 넘게 내려왔다 놓으면 지금 주제를 동기화한 뒤 화면만 다시 그린다.
+// 페이지를 다시 불러오지 않아 흰 화면이 없다. 사이트가 새로 배포됐으면(자산 ETag·Last-Modified 가 바뀜) 그때만 다시 불러온다.
+// 「새로고침 중…」 은 PTR_MIN_MS 이상 보여 깜빡이지 않게 한다. 테스트 회차 중·서랍 메뉴가 열렸을 때는 끈다.
+const PTR_PULL = 50;
+const PTR_RESIST = 0.6;
+const PTR_HOLD = 44;
+const PTR_MIN_MS = 600;
+const PTR_ANIM = "transform 0.25s ease, opacity 0.25s ease";
+const SITE_FILES = ["index.html", "assets/app.js", "assets/engine.js", "assets/sync.js", "assets/style.css"];
+async function siteVersion() {
+  try {
+    const tags = await Promise.all(SITE_FILES.map(async (f) => {
+      const res = await fetch(f, { method: "HEAD", cache: "no-store" });
+      return res.headers.get("etag") || res.headers.get("last-modified") || "";
+    }));
+    return tags.every(Boolean) ? tags.join("|") : null;
+  } catch { return null; }
+}
+const loadedVersion = siteVersion();
 (function setupPullToRefresh() {
   const el = $("#content");
   const ind = document.createElement("div");
@@ -708,30 +757,48 @@ const PTR_PULL = 80;
   $("#page").appendChild(ind);
   let startY = null;
   let armed = false;
-  const reset = () => { startY = null; armed = false; ind.style.opacity = 0; ind.style.transform = "translateY(-100%)"; };
-  reset();
+  let busy = false;
+  const place = (pull, animate) => {
+    const t = animate ? PTR_ANIM : "none";
+    el.style.transition = t;
+    ind.style.transition = t;
+    el.style.transform = pull > 0 ? `translateY(${pull}px)` : "";
+    ind.style.opacity = Math.min(1, pull / PTR_PULL);
+    ind.style.transform = `translateY(${(Math.min(pull, PTR_HOLD) / PTR_HOLD - 1) * 100}%)`;
+  };
+  const reset = (animate) => { startY = null; armed = false; place(0, animate); };
+  reset(false);
   el.addEventListener("touchstart", (e) => {
-    if (inSession || el.scrollTop > 0 || $("#menu").classList.contains("panel-in") || e.touches.length !== 1) return;
+    if (busy || inSession || el.scrollTop > 0 || $("#menu").classList.contains("panel-in") || e.touches.length !== 1) return;
     startY = e.touches[0].clientY;
   }, { passive: true });
   el.addEventListener("touchmove", (e) => {
     if (startY === null) return;
     const dy = e.touches[0].clientY - startY;
-    if (dy <= 0 || el.scrollTop > 0) { reset(); return; }
-    armed = dy >= PTR_PULL;
+    if (dy <= 0 || el.scrollTop > 0) { reset(true); return; }
+    const pull = dy * PTR_RESIST;
+    armed = pull >= PTR_PULL;
     ind.textContent = armed ? "놓으면 새로고침" : "당겨서 새로고침";
-    ind.style.opacity = Math.min(1, dy / PTR_PULL);
-    ind.style.transform = `translateY(${(Math.min(dy, PTR_PULL) / PTR_PULL - 1) * 100}%)`;
+    place(pull, false);
   }, { passive: true });
   el.addEventListener("touchend", async () => {
-    if (!armed) { reset(); return; }
+    if (!armed) { reset(true); return; }
     startY = null;
+    armed = false;
+    busy = true;
     ind.textContent = "새로고침 중…";
+    place(PTR_HOLD, true);
+    const started = Date.now();
     const r = parseRoute();
-    if (r.topic && syncConfig()) await Promise.race([runSync(r.topic), new Promise((ok) => setTimeout(ok, 5000))]);
-    location.reload();
+    const [before, now] = await Promise.all([loadedVersion, siteVersion()]);
+    if (before && now && before !== now) { location.reload(); return; }
+    if (r.topic && syncConfig()) await Promise.race([runSync(r.topic, "당겨서"), new Promise((ok) => setTimeout(ok, 5000))]);
+    await new Promise((ok) => setTimeout(ok, Math.max(0, PTR_MIN_MS - (Date.now() - started))));
+    await route(true);
+    reset(true);
+    busy = false;
   });
-  el.addEventListener("touchcancel", reset);
+  el.addEventListener("touchcancel", () => { if (!busy) reset(true); });
 })();
 window.addEventListener("hashchange", route);
 route();
