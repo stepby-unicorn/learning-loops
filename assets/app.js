@@ -4,7 +4,7 @@
 //   #/topics                    주제 — 주제 카드 목록
 //   #/t/<주제>                  목차(부별 접기·장 상태)
 //   #/t/<주제>/c/<장>           장 — 항목 읽음 체크 + 그 장 테스트
-//   #/t/<주제>/i/<항목 id>      항목 읽기(항목 id = <장>#<절 이름>)
+//   #/t/<주제>/i/<항목 id>      항목 읽기(항목 id = <장>#<절 이름>) — 위 「n / m」 줄 = 장 안 항목 목록 시트, 아래 이전·읽음·다음 바
 //   #/t/<주제>/done/<장>        장 완료 — 장 테스트 · 다음 장 읽기
 //   #/review                    복습 — 주제별 대기 수
 //   #/t/<주제>/review           주제 복습·테스트(항목을 모두 읽은 장의 문항)
@@ -137,6 +137,8 @@ function setFrame(opts) {
   if (topic) $("#btn-topic-sheet").onclick = (e) => { e.preventDefault(); openTopicSheet(topic.id); };
   $("#tabbar").classList.remove("hidden");
   $("#page").classList.add("ll-has-tabbar");
+  // 항목 읽기 아래 바 여백은 viewItem 만 다시 켠다
+  $("#page").classList.remove("ll-has-itembar");
   $("#tabbar").querySelectorAll(".ll-tab").forEach((a) => {
     const on = a.dataset.tab === tab;
     a.classList.toggle("ll-tab-active", on);
@@ -171,12 +173,21 @@ function nextUnread(topic, state) {
   return item ? { item, chapter: findChapter(topic, item.chapterId) } : null;
 }
 
-// ---------- 주제 바꾸기 시트(경로의 주제 이름을 누르면 아래에서 올라옴) — 순서는 「주제」 탭과 같은 topics.json 순서 ----------
-function closeTopicSheet() {
-  $("#topic-sheet").classList.remove("ll-sheet-in");
-  $("#topic-sheet").setAttribute("aria-hidden", "true");
+// ---------- 아래에서 올라오는 시트(주제 바꾸기 · 장 안 항목 목록) — 가림막은 둘이 같이 쓴다 ----------
+function closeSheet() {
+  document.querySelectorAll(".ll-sheet").forEach((s) => {
+    s.classList.remove("ll-sheet-in");
+    s.setAttribute("aria-hidden", "true");
+  });
   $("#sheet-backdrop").classList.remove("ll-sheet-backdrop-in");
 }
+function showSheet(sheet) {
+  sheet.classList.add("ll-sheet-in");
+  sheet.setAttribute("aria-hidden", "false");
+  $("#sheet-backdrop").classList.add("ll-sheet-backdrop-in");
+  $(".ll-sheet-close", sheet).focus();
+}
+// 주제 바꾸기 시트(경로의 주제 이름을 누르면 열림) — 순서는 「주제」 탭과 같은 topics.json 순서
 async function openTopicSheet(currentId) {
   const rows = await Promise.all((await getTopics()).map(async (t) => {
     let line = "";
@@ -193,15 +204,29 @@ async function openTopicSheet(currentId) {
   }));
   $("#topic-sheet-body").innerHTML = `<ul class="ll-sheet-list">${rows.join("")}</ul>`;
   // 지금 주제를 다시 누르면 주소가 같아 hashchange 가 없으니 시트만 닫는다
-  $("#topic-sheet-body").querySelectorAll(".ll-sheet-row").forEach((a) => { a.onclick = () => closeTopicSheet(); });
-  $("#topic-sheet").classList.add("ll-sheet-in");
-  $("#topic-sheet").setAttribute("aria-hidden", "false");
-  $("#sheet-backdrop").classList.add("ll-sheet-backdrop-in");
-  $("#btn-sheet-close").focus();
+  $("#topic-sheet-body").querySelectorAll(".ll-sheet-row").forEach((a) => { a.onclick = () => closeSheet(); });
+  showSheet($("#topic-sheet"));
 }
-$("#sheet-backdrop").onclick = closeTopicSheet;
-$("#btn-sheet-close").onclick = closeTopicSheet;
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeTopicSheet(); });
+// 장 안 항목 목록 시트(항목 읽기 위 「n / m」 줄을 누르면 열림) — 머리 = 장 ID·이름 + 읽은 수, 지금 항목 강조
+function openItemSheet(id, ch, currentId) {
+  const state = loadState(id);
+  $("#item-sheet-title").innerHTML = `<span class="ll-sheet-sub">${esc(ch.title.startsWith(ch.id) ? ch.title : `${ch.id} ${ch.title}`)}</span><span class="ll-sheet-count">${ch.items.length}개 중 ${readCount(state, ch)}개 읽음</span>`;
+  const rows = ch.items.map((x, i) => {
+    const on = x.id === currentId;
+    const read = !!state.read[x.id];
+    return `<li><a class="ll-sheet-row${on ? " ll-sheet-row-on" : ""}" href="#/t/${enc(id)}/i/${enc(x.id)}"${on ? ' aria-current="true"' : ""} aria-label="${i + 1}. ${esc(x.title)}, ${read ? "읽음" : "안 읽음"}${on ? ", 지금 항목" : ""}">
+      <span class="ll-sheet-mark${read ? " ll-sheet-mark-read" : ""}" aria-hidden="true">${read ? "✓" : STAGE_ICON.unread}</span>
+      <span class="ll-sheet-text"><span class="ll-sheet-name">${i + 1}. ${esc(x.title)}</span></span></a></li>`;
+  });
+  $("#item-sheet-body").innerHTML = `<ul class="ll-sheet-list">${rows.join("")}</ul>`;
+  // 지금 항목을 다시 누르면 주소가 같아 hashchange 가 없으니 시트만 닫는다
+  $("#item-sheet-body").querySelectorAll(".ll-sheet-row").forEach((a) => { a.onclick = () => closeSheet(); });
+  showSheet($("#item-sheet"));
+  $("#item-sheet-body .ll-sheet-row-on")?.scrollIntoView({ block: "nearest" });
+}
+$("#sheet-backdrop").onclick = closeSheet;
+document.querySelectorAll(".ll-sheet-close").forEach((b) => { b.onclick = closeSheet; });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeSheet(); });
 function progressBar(ratio) {
   return `<span class="progressbar" aria-valuenow="${Math.round(ratio * 100)}"><span style="transform:translate3d(${-100 + ratio * 100}%,0,0)"></span></span>`;
 }
@@ -419,20 +444,30 @@ async function viewItem(root, id, itemId) {
   // 읽음 체크 → 같은 장 다음 항목, 장 마지막 항목이면 장 완료 화면(장 테스트 · 다음 장)
   const lastInChapter = !next || next.chapterId !== ch.id;
   const after = lastInChapter ? `#/t/${enc(id)}/done/${enc(ch.id)}` : `#/t/${enc(id)}/i/${enc(next.id)}`;
-  root.innerHTML = `<div class="block ll-article">
-      <p class="ll-muted"><a href="#/t/${enc(id)}/c/${enc(ch.id)}">${esc(ch.title)}</a> · ${pos}/${ch.items.length}</p>
+  const chRead = readCount(state, ch);
+  // 위: 장 안 위치 「n / m」 + 장 읽음 막대 + 「항목 목록 ▾」(줄 전체가 버튼, 스크롤해도 머리줄 아래 고정)
+  // 아래: 탭 바로 위 고정 바 「‹ 이전 · 읽음 ✓ · 다음 ›」 — 채움은 「다음」 하나
+  root.innerHTML = `<button type="button" class="ll-itempos" id="btn-item-list" aria-haspopup="dialog" aria-label="${esc(ch.id)} 항목 ${ch.items.length}개 중 ${pos}번째, ${chRead}개 읽음 — 항목 목록 열기">
+      <span class="ll-itempos-num" aria-hidden="true">${pos} / ${ch.items.length}</span>
+      <span class="ll-itempos-bar" aria-hidden="true">${progressBar(ch.items.length ? chRead / ch.items.length : 0)}</span>
+      <span class="ll-itempos-list" aria-hidden="true">항목 목록 ▾</span>
+    </button>
+    <div class="block ll-article">
+      <p class="ll-muted"><a href="#/t/${enc(id)}/c/${enc(ch.id)}">${esc(ch.title)}</a></p>
       <h1>${esc(it.title)}</h1>
       ${html}
     </div>
-    <div class="block">
-      <div class="grid grid-cols-2 grid-gap">
-        ${read
-          ? `<button class="button button-large ll-read-on" id="btn-read"><span>✓ 읽음</span><small>다시 누르면 취소</small></button>`
-          : `<button class="button button-large button-fill" id="btn-read">읽음 체크</button>`}
-        <a class="button button-large ${read ? "button-fill" : "button-outline"}" href="${after}">${lastInChapter ? "장 마치기 ›" : "다음 항목 ›"}</a>
-      </div>
-      ${prev ? `<a class="button ll-actions" href="#/t/${enc(id)}/i/${enc(prev.id)}">‹ 이전 항목</a>` : ""}
-    </div>`;
+    <nav class="ll-itembar" aria-label="항목 이동">
+      ${prev
+        ? `<a class="button button-large ll-itembar-btn" href="#/t/${enc(id)}/i/${enc(prev.id)}">‹ 이전</a>`
+        : `<span class="button button-large ll-itembar-btn disabled" aria-disabled="true">‹ 이전</span>`}
+      ${read
+        ? `<button type="button" class="button button-large ll-itembar-btn ll-read-on" id="btn-read"><span>✓ 읽음</span><small>누르면 취소</small></button>`
+        : `<button type="button" class="button button-large button-outline ll-itembar-btn" id="btn-read">읽음 ✓</button>`}
+      <a class="button button-large button-fill ll-itembar-btn" href="${after}">${lastInChapter ? "장 마치기 ›" : "다음 ›"}</a>
+    </nav>`;
+  $("#page").classList.add("ll-has-itembar");
+  $("#btn-item-list").onclick = () => openItemSheet(id, ch, it.id);
   $("#btn-read").onclick = () => {
     if (read) { toggleRead(id, it.id, false); route(); return; }
     toggleRead(id, it.id, true);
@@ -799,7 +834,7 @@ async function route(soft) {
   const root = $("#content");
   const keepTop = soft ? root.scrollTop : 0;
   if (soft) { root.classList.add("ll-fading"); await new Promise((ok) => setTimeout(ok, SOFT_FADE_MS)); }
-  closeTopicSheet();
+  closeSheet();
   inSession = false;
   if (r.topic) settingsTopic = r.topic;
   // 주제를 이 페이지에서 처음 열면 저장소 사본을 받아 합치고, 바뀌었으면 화면을 다시 그린다(회차 중이면 그리지 않음)
@@ -828,7 +863,7 @@ async function route(soft) {
 // 당겨서 새로고침 — 스크롤이 문서가 아니라 #content 안에서 일어나 Safari 기본 동작이 걸리지 않는다.
 // 맨 위에서 당기면 본문이 손가락을 절반 속도로 따라오고, PTR_PULL 넘게 내려왔다 놓으면 지금 주제를 동기화한 뒤 화면만 다시 그린다.
 // 페이지를 다시 불러오지 않아 흰 화면이 없다. 사이트가 새로 배포됐으면(자산 ETag·Last-Modified 가 바뀜) 그때만 다시 불러온다.
-// 「새로고침 중…」 은 PTR_MIN_MS 이상 보여 깜빡이지 않게 한다. 테스트 회차 중·주제 바꾸기 시트가 열렸을 때는 끈다.
+// 「새로고침 중…」 은 PTR_MIN_MS 이상 보여 깜빡이지 않게 한다. 테스트 회차 중·시트(주제 바꾸기·항목 목록)가 열렸을 때는 끈다.
 const PTR_PULL = 50;
 const PTR_RESIST = 0.6;
 const PTR_HOLD = 44;
@@ -865,7 +900,7 @@ const loadedVersion = siteVersion();
   const reset = (animate) => { startY = null; armed = false; place(0, animate); };
   reset(false);
   el.addEventListener("touchstart", (e) => {
-    if (busy || inSession || el.scrollTop > 0 || $("#topic-sheet").classList.contains("ll-sheet-in") || e.touches.length !== 1) return;
+    if (busy || inSession || el.scrollTop > 0 || $(".ll-sheet-in") || e.touches.length !== 1) return;
     startY = e.touches[0].clientY;
   }, { passive: true });
   el.addEventListener("touchmove", (e) => {
