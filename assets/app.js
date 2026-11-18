@@ -1,15 +1,16 @@
 // 학습 온보딩 화면 — 주소(#/…)마다 화면을 그린다. 규칙은 assets/engine.js
 // 아래 탭 4개(오늘 · 주제 · 복습 · 설정)를 모든 화면에 고정하고, 테스트 회차 중에만 숨긴다.
-//   #/ · #/today                오늘(이어 읽기·주제별 진행)
+//   #/ · #/today                오늘 — 오늘 할 일(일정 장·재점검) · 이번 주 학습량 · 주제별 진행 · 다가오는 7일 재점검
 //   #/topics                    주제 — 주제 카드 목록
-//   #/t/<주제>                  목차(부별 접기·장 상태)
+//   #/t/<주제>                  목차(부별 접기·장 상태·일정 날짜)
 //   #/t/<주제>/c/<장>           장 — 항목 읽음 체크 + 그 장 테스트
 //   #/t/<주제>/i/<항목 id>      항목 읽기(항목 id = <장>#<절 이름>) — 위 「n / m」 줄 = 장 안 항목 목록 시트, 아래 이전·읽음·다음 바
 //   #/t/<주제>/done/<장>        장 완료 — 장 테스트 · 다음 장 읽기
-//   #/review                    복습 — 주제별 대기 수
-//   #/t/<주제>/review           주제 복습·테스트(항목을 모두 읽은 장의 문항)
+//   #/review                    복습 「전체」 — 주제 칩(대기 수)·숫자 3줄·재점검 시작(모든 주제 한 회차)·오늘 재점검 내역
+//   #/t/<주제>/review           복습 — 칩에서 고른 주제만(항목을 모두 읽은 장의 문항)
 //   #/settings · #/t/<주제>/log 설정 — 동기화 · 결과 보내기 · 요약 복사 · 백업(log 는 그 주제를 고른 설정)
-// 데이터: topics/topics.json(주제 목록) · topics/<주제>/index.json(구조·문항) · topics/<주제>/<장>.json(장 본문, 열 때 불러옴)
+// 일정·학습량 계산은 assets/plan.js
+// 데이터: topics/topics.json(주제 목록) · topics/<주제>/index.json(구조·문항·일정 schedule) · topics/<주제>/<장>.json(장 본문, 열 때 불러옴)
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const enc = encodeURIComponent;
@@ -172,6 +173,25 @@ function nextUnread(topic, state) {
   const item = allItems(topic).find((it) => !state.read[it.id]);
   return item ? { item, chapter: findChapter(topic, item.chapterId) } : null;
 }
+// 장 이름 한 줄 — 제목에 장 ID 가 이미 들어 있으면(「AUT03 인증을 …」) 앞에 다시 붙이지 않는다
+const chapterLabel = (ch) => (ch.title.startsWith(ch.id) ? ch.title : `${ch.id} ${ch.title}`);
+// 장으로 가는 주소: 안 읽은 첫 항목, 다 읽었으면 장 완료(그 장 테스트)
+function chapterHref(id, state, ch) {
+  const it = ch.items.find((x) => !state.read[x.id]);
+  return it ? `#/t/${enc(id)}/i/${enc(it.id)}` : `#/t/${enc(id)}/done/${enc(ch.id)}`;
+}
+// 모든 주제를 topics.json 순서로 불러온다 — 못 읽은 주제는 error 만 담는다
+async function loadAllTopics() {
+  return Promise.all((await getTopics()).map(async (t) => {
+    try {
+      const topic = await getTopic(t.id);
+      const state = loadState(t.id);
+      return { t, topic, state, p: topicProgress(topic, state), plan: scheduleStatus(topic, state) };
+    } catch (e) { return { t, error: e.message }; }
+  }));
+}
+// 오늘 일정 주제 = 오늘까지 잡힌 장 중 안 끝난 장이 있는 첫 주제(topics.json 순서)
+const scheduledToday = (entries) => entries.find((r) => r.plan && r.plan.pending.length) || null;
 
 // ---------- 아래에서 올라오는 시트(주제 바꾸기 · 장 안 항목 목록) — 가림막은 둘이 같이 쓴다 ----------
 function closeSheet() {
@@ -210,7 +230,7 @@ async function openTopicSheet(currentId) {
 // 장 안 항목 목록 시트(항목 읽기 위 「n / m」 줄을 누르면 열림) — 머리 = 장 ID·이름 + 읽은 수, 지금 항목 강조
 function openItemSheet(id, ch, currentId) {
   const state = loadState(id);
-  $("#item-sheet-title").innerHTML = `<span class="ll-sheet-sub">${esc(ch.title.startsWith(ch.id) ? ch.title : `${ch.id} ${ch.title}`)}</span><span class="ll-sheet-count">${ch.items.length}개 중 ${readCount(state, ch)}개 읽음</span>`;
+  $("#item-sheet-title").innerHTML = `<span class="ll-sheet-sub">${esc(chapterLabel(ch))}</span><span class="ll-sheet-count">${ch.items.length}개 중 ${readCount(state, ch)}개 읽음</span>`;
   const rows = ch.items.map((x, i) => {
     const on = x.id === currentId;
     const read = !!state.read[x.id];
@@ -260,61 +280,87 @@ function continueTarget(entries) {
   return best;
 }
 
-// ---------- 오늘: 이어 읽기 · 주제별 진행 · 동기화 한 줄 ----------
+// ---------- 오늘: ① 오늘 할 일 ② 이번 주 학습량 ③ 주제별 진행 ④ 다가오는 7일 재점검 · 동기화 한 줄 ----------
+const WEEKDAY_LABEL = ["월", "화", "수", "목", "금", "토", "일"];
 async function viewHome(root) {
   setFrame({ title: "오늘", tab: "today" });
-  const topics = await getTopics();
-  const loaded = await Promise.all(topics.map(async (t) => {
-    try {
-      const topic = await getTopic(t.id);
-      const state = loadState(t.id);
-      const p = topicProgress(topic, state);
-      return { entry: { t, topic, state }, html: `<li><a class="item-link item-content" href="#/t/${enc(t.id)}"><div class="item-inner ll-topic-row">
-        <div class="item-title">${esc(t.title)}</div>${stageBar(topic, state, p)}</div></a></li>` };
-    } catch (e) {
-      return { html: `<li class="item-content"><div class="item-inner">${esc(t.title)} — 읽지 못함: ${esc(e.message)}</div></li>` };
-    }
-  }));
-  // topics.json 순서대로 — 불러오기가 끝난 순서를 쓰면 「이어 읽기」 주제가 새로고침마다 바뀐다
-  const entries = loaded.filter((r) => r.entry).map((r) => r.entry);
-  const rows = loaded.map((r) => r.html);
-  const go = continueTarget(entries);
-  const goCard = go ? (() => {
-    const ch = findChapter(go.topic, go.next.chapterId);
-    const left = ch.items.filter((it) => !go.state.read[it.id]).length;
-    return `<div class="card ll-continue"><div class="card-content card-content-padding">
-      <p class="ll-eyebrow">이어 읽기</p>
-      <p class="ll-continue-title">${esc(go.t.title)} · ${esc(ch.title)}</p>
-      <p class="ll-muted">${esc(go.next.title)}부터 · ${left}개 남음</p>
-      <a class="button button-fill button-large" href="#/t/${enc(go.t.id)}/i/${enc(go.next.id)}">이어서 읽기</a></div></div>`;
-  })() : "";
-  root.innerHTML = `${goCard}
-    <div class="block-title">주제</div>
-    ${rows.length ? `<div class="list list-strong inset list-dividers ll-topics"><ul>${rows.join("")}</ul></div>` : `<div class="block">주제가 없습니다.</div>`}
+  const all = await loadAllTopics();
+  const entries = all.filter((r) => !r.error);
+  const due = entries.reduce((n, r) => n + r.p.due, 0);
+  const todo = entries.filter((r) => r.plan && r.plan.pending.length);
+
+  // ① 오늘 할 일: 일정상 오늘까지 장(밀린 장은 빨강 「M/D 밀림」) + 재점검 대기 수. 채움 버튼 하나 — 일정 장 → 재점검 → 이어 읽기 순
+  const todoRows = todo.map((r) => `<li class="ll-today-row"><a href="#/t/${enc(r.t.id)}"><span class="ll-today-topic">${esc(r.t.title)}</span>
+      <span class="ll-today-chs">${r.plan.pending.map((x) => `<span class="ll-today-ch">${esc(x.chapter.id)}${x.late ? ` <span class="ll-late">${shortDay(x.date)} 밀림</span>` : ""}</span>`).join('<span aria-hidden="true"> · </span>')}</span></a></li>`).join("");
+  const dueRow = due ? `<li class="ll-today-row"><a href="#/review"><span class="ll-today-topic">재점검 대기</span><span class="ll-today-num">${due}</span></a></li>` : "";
+  const first = todo[0];
+  const go = first ? null : continueTarget(entries);
+  const primary = first
+    ? `<a class="button button-fill button-large ll-actions" href="${chapterHref(first.t.id, first.state, first.plan.pending[0].chapter)}">${esc(first.plan.pending[0].chapter.id)} 시작</a>`
+    : due ? `<a class="button button-fill button-large ll-actions" href="#/review">재점검 시작</a>`
+    : go ? `<a class="button button-fill button-large ll-actions" href="#/t/${enc(go.t.id)}/i/${enc(go.next.id)}">이어 읽기: ${esc(go.next.chapterId)}</a>` : "";
+  const todayCard = `<div class="card ll-today"><div class="card-content card-content-padding">
+      <p class="ll-eyebrow">오늘 할 일</p>
+      ${todoRows || dueRow ? `<ul class="ll-today-list">${todoRows}${dueRow}</ul>` : `<p class="ll-state">오늘 일정·재점검이 없어요.</p>
+      ${go ? `<p class="ll-muted ll-today-next">이어 읽기 · ${esc(go.t.title)} · ${esc(go.next.title)}부터</p>` : ""}`}
+      ${primary}</div></div>`;
+
+  // ② 이번 주 학습량: 요일별 막대 두 개(읽은 항목 · 푼 문항) + 연속 학습일
+  const week = weekActivity(entries);
+  const max = Math.max(1, ...week.days.flatMap((d) => [d.items, d.answers]));
+  const h = (n) => `${Math.round((n / max) * 100)}%`;
+  const sumItems = week.days.reduce((n, d) => n + d.items, 0);
+  const sumAnswers = week.days.reduce((n, d) => n + d.answers, 0);
+  const weekCard = `<div class="card ll-week"><div class="card-content card-content-padding">
+      <div class="ll-week-head"><p class="ll-eyebrow">이번 주 학습량</p><span class="ll-week-streak">연속 학습 <b>${week.streak}</b>일</span></div>
+      <div class="ll-week-bars" role="img" aria-label="이번 주 읽은 항목 ${sumItems}개 · 푼 문항 ${sumAnswers}개">${week.days.map((d, i) => `<div class="ll-week-day${d.today ? " ll-week-today" : ""}${d.future ? " ll-week-future" : ""}">
+        <div class="ll-week-pair"><span class="ll-week-bar ll-week-items" style="height:${h(d.items)}"></span><span class="ll-week-bar ll-week-answers" style="height:${h(d.answers)}"></span></div>
+        <span class="ll-week-label">${WEEKDAY_LABEL[i]}</span></div>`).join("")}</div>
+      <div class="ll-stack-legend"><span><i class="ll-dot ll-dot-read"></i>읽은 항목 ${sumItems}</span><span><i class="ll-dot ll-dot-tested"></i>푼 문항 ${sumAnswers}</span><span class="ll-stack-total">장 1개 또는 문항 ${STREAK_MIN_ANSWERS}개면 학습한 날</span></div>
+    </div></div>`;
+
+  // ③ 주제별 진행: 진행 % + 단계별 색 막대, 일정 있는 주제만 「일정대로 / N장 밀림」 한 줄
+  const rows = all.map((r) => {
+    if (r.error) return `<li class="item-content"><div class="item-inner">${esc(r.t.title)} — 읽지 못함: ${esc(r.error)}</div></li>`;
+    const line = r.plan && scheduleLine(r.plan);
+    return `<li><a class="item-link item-content" href="#/t/${enc(r.t.id)}"><div class="item-inner ll-topic-row">
+      <div class="ll-progress-head"><span class="ll-progress-name">${esc(r.t.title)}</span><span class="ll-progress-pct">${topicPercent(r.p)}%</span></div>
+      ${stageBar(r.topic, r.state, r.p, false)}
+      ${line ? `<div class="ll-progress-plan${line.late ? " ll-late" : ""}">${esc(line.text)}</div>` : ""}</div></a></li>`;
+  });
+
+  // ④ 다가오는 7일 재점검: 날짜별 대기 수
+  const up = upcomingReviews(entries);
+  const upCard = `<div class="ll-upcoming" role="list">${up.map((d) => `<div class="ll-upcoming-day${d.n ? "" : " ll-upcoming-none"}" role="listitem" aria-label="${shortDay(d.date)} 재점검 ${d.n}"><span class="ll-upcoming-date">${shortDay(d.date)}</span><span class="ll-upcoming-n">${d.n}</span></div>`).join("")}</div>`;
+
+  root.innerHTML = `${todayCard}${weekCard}
+    <div class="block-title">주제별 진행</div>
+    ${rows.length ? `<div class="list list-strong inset list-dividers ll-topics"><ul>${rows.join("")}</ul></div>
+    <div class="block ll-progress-legend"><div class="ll-stack-legend"><span><i class="ll-dot ll-dot-read"></i>읽음</span><span><i class="ll-dot ll-dot-tested"></i>테스트 통과</span><span><i class="ll-dot ll-dot-mastered"></i>숙달</span><span class="ll-stack-total">진행 % = 테스트 통과 이상 장</span></div></div>` : `<div class="block">주제가 없습니다.</div>`}
+    <div class="block-title">다가오는 7일 재점검</div>
+    <div class="block">${upCard}</div>
     <div class="block-title">기기 동기화</div>
     <div class="list list-strong inset"><ul><li>${syncRow()}</li></ul></div>
-    <div class="block"><p class="ll-muted">항목을 다 읽은 장은 문제로 테스트하고, 1·3·7·21·60·180일 뒤에 다시 점검합니다.</p></div>`;
+    <div class="block"><p class="ll-muted">항목을 다 읽은 장은 문제로 테스트하고, ${intervalText()}일 뒤에 다시 점검합니다.</p></div>`;
 }
 
 // ---------- 주제: 주제 카드 한 줄에 하나 — 이름은 줄바꿈(말줄임 없음), 진행 막대, 「다음: <장 ID>」 이어 읽기 ----------
 async function viewTopics(root) {
   setFrame({ title: "주제", tab: "topics" });
-  const topics = await getTopics();
-  const loaded = await Promise.all(topics.map(async (t) => {
-    try {
-      const topic = await getTopic(t.id);
-      const state = loadState(t.id);
-      return { t, topic, state, p: topicProgress(topic, state), next: nextUnread(topic, state) };
-    } catch (e) { return { t, error: e.message }; }
-  }));
-  // 채움 버튼은 하나 — 가장 최근에 읽은 주제(일정 데이터가 생기면 오늘 일정 주제로 바꿀 자리)
-  const go = continueTarget(loaded.filter((r) => !r.error));
+  const loaded = await loadAllTopics();
+  // 채움 버튼은 하나 — 오늘 일정 주제(오늘까지 잡힌 안 끝난 장으로), 없으면 가장 최근에 읽은 주제
+  const entries = loaded.filter((r) => !r.error);
+  const sched = scheduledToday(entries);
+  const go = sched || continueTarget(entries);
   const cards = loaded.map((r) => {
     if (r.error) return `<div class="card ll-topic-card"><div class="card-content card-content-padding"><div class="ll-topic-name">${esc(r.t.title)}</div><p class="ll-muted">읽지 못함: ${esc(r.error)}</p></div></div>`;
-    const { t, topic, state, p, next } = r;
+    const { t, topic, state, p } = r;
+    const n = nextUnread(topic, state);
     const primary = go && go.t.id === t.id;
-    const btn = next
-      ? `<a class="button button-large ${primary ? "button-fill" : "button-tonal"} ll-topic-next" href="#/t/${enc(t.id)}/i/${enc(next.item.id)}">다음: ${esc(next.chapter.id)}</a>`
+    const target = primary && sched ? { ch: sched.plan.pending[0].chapter, href: chapterHref(t.id, state, sched.plan.pending[0].chapter) }
+      : n ? { ch: n.chapter, href: `#/t/${enc(t.id)}/i/${enc(n.item.id)}` } : null;
+    const btn = target
+      ? `<a class="button button-large ${primary ? "button-fill" : "button-tonal"} ll-topic-next" href="${target.href}">다음: ${esc(target.ch.id)}</a>`
       : `<p class="ll-state">모든 항목을 읽었어요.</p>`;
     return `<div class="card ll-topic-card"><div class="card-content card-content-padding">
       <a class="ll-topic-head" href="#/t/${enc(t.id)}"><span class="ll-topic-name">${esc(t.title)}</span><span class="ll-topic-more" aria-hidden="true">›</span></a>
@@ -333,6 +379,9 @@ async function viewToc(root, id) {
   setFrame({ title: topic.title, tab: "topics", topic, back: "#/topics" });
   const n = nextUnread(topic, state);
   const nextCh = n && n.chapter;
+  // 일정 날짜(있으면): 안 끝난 장인데 날짜가 어제 이전이면 빨강 「M/D 밀림」
+  const plan = scheduleStatus(topic, state);
+  const today = dayKey(Date.now());
   const groups = [];
   for (const ch of topic.chapters) {
     const last = groups[groups.length - 1];
@@ -344,16 +393,21 @@ async function viewToc(root, id) {
     const st = chapterStage(state, ch);
     const after = st === "unread" || st === "reading" ? `${readCount(state, ch)}/${ch.items.length}${st === "reading" ? " 읽음" : ""}` : STAGE_LABEL[st];
     const now = nextCh === ch;
+    const date = plan && plan.dateOf.get(ch.id);
+    const late = date && date < today && !chapterDone(state, ch);
+    const dateHtml = date ? `<span class="ll-path-date${late ? " ll-late" : ""}">${shortDay(date)}${late ? " 밀림" : ""}</span>` : "";
     return `<li class="ll-path-row ll-path-${st}${now ? " ll-path-now" : ""}"${now ? ' id="toc-now"' : ""}><a href="#/t/${enc(id)}/c/${enc(ch.id)}"${now ? ' aria-current="step"' : ""}>
       <span class="ll-path-mark ll-stage-${st}" title="${STAGE_LABEL[st]}" aria-label="${STAGE_LABEL[st]}">${STAGE_ICON[st]}</span>
-      <span class="ll-path-text">${esc(ch.title)}</span><span class="ll-path-after">${after}</span></a></li>`;
+      <span class="ll-path-text">${esc(ch.title)}</span><span class="ll-path-after">${after}${dateHtml}</span></a></li>`;
   }).join("")}</ol>`;
   // 지금 장이 든 부만 펼친다(다 읽었으면 모두 펼침). 부 이름이 없으면 접지 않는다
   const html = groups.map((g) => {
     if (!g.part) return `<div class="ll-part">${rows(g)}</div>`;
     const done = g.chapters.filter((ch) => ["tested", "mastered"].includes(chapterStage(state, ch))).length;
     const open = !nextCh || g.chapters.includes(nextCh) || groups.length === 1;
-    return `<details class="ll-part"${open ? " open" : ""}><summary class="ll-part-head"><span class="ll-part-name">${esc(g.part)}</span><span class="ll-part-count">${g.chapters.length}장 · 통과 ${done}</span></summary>${rows(g)}</details>`;
+    // 부 머리: 일정이 있으면 「N장 · M/D부터」(부 안 가장 이른 날짜), 없으면 「N장 · 통과 K」
+    const from = plan && g.chapters.map((ch) => plan.dateOf.get(ch.id)).filter(Boolean).sort()[0];
+    return `<details class="ll-part"${open ? " open" : ""}><summary class="ll-part-head"><span class="ll-part-name">${esc(g.part)}</span><span class="ll-part-count">${g.chapters.length}장 · ${from ? `${shortDay(from)}부터` : `통과 ${done}`}</span></summary>${rows(g)}</details>`;
   }).join("");
   root.innerHTML = `<div class="block">
       ${topic.summary ? `<p class="ll-muted">${esc(topic.summary)}</p>` : ""}
@@ -361,7 +415,7 @@ async function viewToc(root, id) {
       ${n ? `<a class="button button-fill button-large ll-actions" href="#/t/${enc(id)}/i/${enc(n.item.id)}">${esc(nextCh.id)} 이어 읽기</a>` : `<p class="ll-state">모든 항목을 읽었어요.</p>`}
     </div>
     <div class="ll-toc-parts">${html}</div>
-    <div class="block ll-legend"><p class="ll-muted">${Object.entries(STAGE_ICON).map(([k, v]) => `<span class="ll-stage-${k}">${v}</span> ${STAGE_LABEL[k]}`).join(" · ")}</p></div>
+    <div class="block ll-legend"><p class="ll-muted">${Object.entries(STAGE_ICON).map(([k, v]) => `<span class="ll-stage-${k}">${v}</span> ${STAGE_LABEL[k]}`).join(" · ")}${plan ? ` · 날짜 = 일정 · <span class="ll-late">밀림</span> = 일정 지남` : ""}</p></div>
     ${nextCh ? `<button type="button" class="ll-fab" id="btn-now">지금 장으로</button>` : ""}`;
   if (nextCh) $("#btn-now").onclick = () => {
     const row = $("#toc-now");
@@ -511,42 +565,87 @@ async function viewDone(root, id, chapterId) {
   $("#content").scrollTop = 0;
 }
 
-// ---------- 복습·테스트 ----------
+// ---------- 복습: 주제 칩(대기 수) · 숫자 3줄 · 채움 버튼 하나 · 오늘 재점검 내역(장별) ----------
+// #/review = 「전체」(모든 주제를 한 회차로), #/t/<주제>/review = 그 주제. 칩 숫자 = 오늘 재점검 대기 수(「복습」 탭 배지와 같은 기준)
 async function viewReview(root, id) {
-  const topic = await getTopic(id);
-  const state = loadState(id);
-  const p = topicProgress(topic, state);
-  setFrame({ title: `복습 · ${topic.title}`, tab: "review", topic, crumb: "복습", back: "#/review" });
-  const { fresh, due } = reviewQueue(topic, state);
-  const notReady = topic.chapters.filter((ch) => (ch.cards || []).length && readCount(state, ch) < ch.items.length).length;
+  const all = await loadAllTopics();
+  const entries = all.filter((r) => !r.error);
+  const sel = id ? entries.filter((r) => r.t.id === id) : entries;
+  if (id) {
+    const one = sel[0] || { topic: await getTopic(id) };
+    setFrame({ title: `복습 · ${one.topic.title}`, tab: "review", topic: one.topic, crumb: "복습", back: "#/review" });
+  } else setFrame({ title: "복습", tab: "review" });
+  const parts = sel.map((r) => ({ r, ...reviewQueue(r.topic, r.state) }));
+  const due = parts.flatMap((x) => x.due.length ? [{ id: x.r.t.id, cards: x.due }] : []);
+  const fresh = parts.flatMap((x) => x.fresh.length ? [{ id: x.r.t.id, cards: x.fresh }] : []);
+  const dueN = due.reduce((n, x) => n + x.cards.length, 0);
+  const freshN = fresh.reduce((n, x) => n + x.cards.length, 0);
+  const notReady = sel.reduce((n, r) => n + r.topic.chapters.filter((ch) => (ch.cards || []).length && readCount(r.state, ch) < ch.items.length).length, 0);
+  const nextDue = sel.map((r) => r.p.nextDue).filter(Boolean).sort((a, b) => a - b)[0];
+  const chip = (href, label, n, on) => `<a class="ll-chip${on ? " ll-chip-on" : ""}" href="${href}"${on ? ' aria-current="page"' : ""}><span class="ll-chip-name">${esc(label)}</span> <span class="ll-chip-n">${n}</span></a>`;
+  const chips = `<nav class="ll-chip-row" aria-label="주제">${chip("#/review", "전체", entries.reduce((n, r) => n + r.p.due, 0), !id)}${entries.map((r) => chip(`#/t/${enc(r.t.id)}/review`, r.t.title, r.p.due, r.t.id === id)).join("")}</nav>`;
+  // 오늘 재점검 내역: 장마다 대기 수(전체면 주제 이름도)
+  const byChapter = parts.flatMap((x) => {
+    const n = {};
+    for (const c of x.due) n[c.chapterId] = (n[c.chapterId] || 0) + 1;
+    return x.r.topic.chapters.filter((ch) => n[ch.id]).map((ch) => ({ r: x.r, ch, n: n[ch.id] }));
+  });
+  const dueList = byChapter.length ? `<div class="block-title">오늘 재점검 내역</div>
+    <div class="list list-strong inset list-dividers ll-due-list"><ul>${byChapter.map(({ r, ch, n }) => `<li><a class="item-link item-content" href="#/t/${enc(r.t.id)}/c/${enc(ch.id)}"><div class="item-inner">
+      <div class="item-title">${esc(chapterLabel(ch))}${id ? "" : `<div class="item-footer">${esc(r.t.title)}</div>`}</div><div class="item-after">${n}</div></div></a></li>`).join("")}</ul></div>` : "";
   // 채움 버튼은 하나만 — 재점검이 있으면 재점검, 없으면 새 문제
-  const primary = due.length ? "due" : fresh.length ? "fresh" : null;
+  const primary = dueN ? "due" : freshN ? "fresh" : null;
   const btn = (key, label, n) => `<button class="button ${primary === key ? "button-fill button-large" : "button-tonal button-large"}" id="btn-${key}" ${n ? "" : "disabled"}>${label} (${n})</button>`;
-  root.innerHTML = `<div class="block-title block-title-medium">복습·테스트</div>
+  root.innerHTML = `${chips}
     ${primary ? "" : `<div class="block ll-done">
       <div class="ll-done-mark">✓</div>
       <div class="ll-done-title">오늘 볼 문제 없어요</div>
-      ${p.nextDue ? `<p class="ll-muted">다음 재점검 ${fmtDate(p.nextDue)}</p>` : ""}
+      ${nextDue ? `<p class="ll-muted">다음 재점검 ${fmtDate(nextDue)}</p>` : ""}
     </div>`}
     <div class="list list-strong inset list-dividers"><ul>
-      <li class="item-content"><div class="item-inner"><div class="item-title">오늘 재점검</div><div class="item-after">${due.length}</div></div></li>
-      <li class="item-content"><div class="item-inner"><div class="item-title">새 문제 (1번 맞히면 통과)</div><div class="item-after">${fresh.length}</div></div></li>
+      <li class="item-content"><div class="item-inner"><div class="item-title">오늘 재점검</div><div class="item-after">${dueN}</div></div></li>
+      <li class="item-content"><div class="item-inner"><div class="item-title">새 문제 (1번 맞히면 통과)</div><div class="item-after">${freshN}</div></div></li>
       <li class="item-content"><div class="item-inner"><div class="item-title">아직 다 읽지 않은 장</div><div class="item-after">${notReady}</div></div></li>
     </ul></div>
     <div class="block grid grid-gap">
-      ${primary ? `${btn("due", "재점검 시작", due.length)}${btn("fresh", "새 문제 테스트", fresh.length)}
-      ${p.nextDue ? `<p class="ll-muted">다음 재점검 ${fmtDate(p.nextDue)}</p>` : ""}` : `<a class="button button-fill button-large" href="#/t/${enc(id)}">목차에서 이어 읽기</a>`}
+      ${primary ? `${btn("due", "재점검 시작", dueN)}${btn("fresh", "새 문제 테스트", freshN)}
+      ${nextDue ? `<p class="ll-muted">다음 재점검 ${fmtDate(nextDue)}</p>` : ""}` : `<a class="button button-fill button-large" href="${id ? `#/t/${enc(id)}` : "#/topics"}">${id ? "목차에서 이어 읽기" : "주제에서 이어 읽기"}</a>`}
     </div>
-    <div class="block"><p class="ll-muted">항목을 모두 읽은 장의 문제만 나와요. 답을 고르고 확신을 고른 뒤 제출하면 정답이 열려요. 틀린 문제는 회차 끝에 한 번 더 나와요.</p></div>`;
-  const back = `#/t/${enc(id)}/review`;
+    ${dueList}
+    <div class="block"><p class="ll-muted">재점검은 테스트를 통과한 뒤 ${intervalText()}일 뒤에 하고, 틀리면 1일 뒤로 돌아가요.</p>
+      <p class="ll-muted">항목을 모두 읽은 장의 문제만 나와요. 답을 고르고 확신을 고른 뒤 제출하면 정답이 열려요. 틀린 문제는 회차 끝에 한 번 더 나와요.</p></div>`;
+  $(".ll-chip-on")?.scrollIntoView({ block: "nearest", inline: "center" });
+  const back = id ? `#/t/${enc(id)}/review` : "#/review";
   if (!primary) return;
-  $("#btn-due").onclick = () => runSession(root, id, due, "재점검", back);
-  $("#btn-fresh").onclick = () => runSession(root, id, fresh, "새 문제 테스트", back);
+  if (dueN) $("#btn-due").onclick = () => runSessionParts(root, due, "재점검", back);
+  if (freshN) $("#btn-fresh").onclick = () => runSessionParts(root, fresh, "새 문제 테스트", back);
 }
 
 function runSession(root, id, cards, label, backHref) {
-  const state = loadState(id);
-  const sess = createSession(state, cards);
+  runSessionParts(root, [{ id, cards }], label, backHref);
+}
+// 여러 주제를 한 회차로(복습 「전체」): 주제마다 엔진 회차를 따로 만들어 topics.json 순서로 이어 낸다 — 상태는 주제마다 저장
+function multiSession(parts) {
+  const subs = parts.filter((p) => p.cards.length).map((p) => { const state = loadState(p.id); return { id: p.id, state, sess: createSession(state, p.cards) }; });
+  const sum = (k) => subs.reduce((n, x) => n + x.sess[k], 0);
+  const current = () => subs.find((x) => x.sess.next());
+  return {
+    subs,
+    get total() { return sum("total"); },
+    get passed() { return sum("passed"); },
+    get answered() { return sum("answered"); },
+    get steps() { return sum("steps"); },
+    get failed() { return subs.flatMap((x) => x.sess.failed); },
+    get unsure() { return subs.flatMap((x) => x.sess.unsure); },
+    next() { return current()?.sess.next() || null; },
+    // 채점한 카드의 주제 { id, state } 를 돌려준다 — 부른 쪽이 저장
+    grade(...args) { const x = current(); x.sess.grade(...args); return x; },
+  };
+}
+function runSessionParts(root, parts, label, backHref) {
+  const sess = multiSession(parts);
+  const cards = parts.flatMap((p) => p.cards);
+  const id = sess.subs[0]?.id;
   inSession = true;
   setSessionFrame(backHref);
   const step = () => {
@@ -559,8 +658,8 @@ function runSession(root, id, cards, label, backHref) {
       const failed = sess.failed;
       const cardById = Object.fromEntries(cards.map((c) => [c.id, c]));
       // 틀린 문제의 내 답 = 이 회차 기록에서 그 카드의 마지막 답
-      const myAnswer = (cid) => [...state.log].reverse().find((l) => l.id === cid)?.answer;
-      const nextDue = Object.values(state.cards).filter((cs) => cs && cs.box && cs.due > Date.now()).map((cs) => cs.due).sort((a, b) => a - b)[0];
+      const myAnswer = (cid) => sess.subs.flatMap((x) => x.state.log).filter((l) => l.id === cid).pop()?.answer;
+      const nextDue = sess.subs.flatMap((x) => Object.values(x.state.cards)).filter((cs) => cs && cs.box && cs.due > Date.now()).map((cs) => cs.due).sort((a, b) => a - b)[0];
       root.innerHTML = `<div class="block-title block-title-medium">${esc(label)} 끝</div>
         <div class="card ll-score"><div class="card-content card-content-padding">
           <div class="ll-score-num">${sess.total}문제 중 <b>${sess.passed}</b>개 통과</div>
@@ -574,14 +673,14 @@ function runSession(root, id, cards, label, backHref) {
         <div class="list list-strong inset list-dividers ll-unsure"><ul>${sess.unsure.map((u) => `<li class="item-content"><div class="item-inner"><div class="item-title">${esc(u)} ${esc(cardById[u]?.q || "")}
           <div class="item-footer">정답: ${esc(cardById[u]?.a || "")}</div></div></div></li>`).join("")}</ul></div>` : ""}
         <div class="block grid grid-gap"><button class="button button-fill button-large" id="btn-back">돌아가기</button>
-          <p class="ll-muted">결과는 <a href="#/t/${enc(id)}/log">설정</a>에서 「결과 보내기」로 리뷰 세션에 넘겨요.</p></div>`;
+          <p class="ll-muted">결과는 <a href="${sess.subs.length === 1 ? `#/t/${enc(id)}/log` : "#/settings"}">설정</a>에서 「결과 보내기」로 리뷰 세션에 넘겨요.</p></div>`;
       // 회차는 주소를 바꾸지 않고 진행해 backHref 가 지금 주소와 같을 수 있다 — 같으면 hashchange 가 없으니 직접 다시 그린다
       $("#btn-back").onclick = () => { if (location.hash === backHref) route(); else location.hash = backHref; };
       return;
     }
     showCard(root, card, `${label} · ${sess.answered + 1}/${sess.steps} · 통과 ${sess.passed}`, sess.answered / sess.steps, (grade, conf, answer) => {
-      sess.grade(adjustGrade(grade, conf), conf, answer, grade === 2);
-      saveState(id, state);
+      const x = sess.grade(adjustGrade(grade, conf), conf, answer, grade === 2);
+      saveState(x.id, x.state);
       step();
     });
   };
@@ -793,24 +892,6 @@ async function viewSettings(root, topicId) {
   };
 }
 
-// ---------- 복습: 주제별 대기 수 → 주제 복습·테스트 화면(주제 칩 필터·합친 재점검은 다음 단계) ----------
-async function viewReviewHub(root) {
-  setFrame({ title: "복습", tab: "review" });
-  const rows = await Promise.all((await getTopics()).map(async (t) => {
-    try {
-      const p = topicProgress(await getTopic(t.id), loadState(t.id));
-      return `<li><a class="item-link item-content" href="#/t/${enc(t.id)}/review"><div class="item-inner">
-        <div class="item-title">${esc(t.title)}<div class="item-footer">재점검 ${p.due} · 새 문제 ${p.fresh}${p.nextDue && !p.due ? ` · 다음 재점검 ${fmtDate(p.nextDue)}` : ""}</div></div>
-        <div class="item-after">${p.due ? `<span class="ll-badge ll-badge-inline">${p.due}</span>` : ""}</div></div></a></li>`;
-    } catch (e) {
-      return `<li class="item-content"><div class="item-inner">${esc(t.title)} — 읽지 못함: ${esc(e.message)}</div></li>`;
-    }
-  }));
-  root.innerHTML = `<div class="block-title block-title-medium">복습·테스트</div>
-    <div class="list list-strong inset list-dividers ll-review-topics"><ul>${rows.join("")}</ul></div>
-    <div class="block"><p class="ll-muted">항목을 다 읽은 장은 문제로 테스트하고, 1·3·7·21·60·180일 뒤에 다시 점검합니다.</p></div>`;
-}
-
 // ---------- 주소 해석 ----------
 function parseRoute() {
   const parts = location.hash.replace(/^#\/?/, "").split("/").map(decodeURIComponent);
@@ -846,7 +927,7 @@ async function route(soft) {
   try {
     if (r.view === "home") await viewHome(root);
     else if (r.view === "topics") await viewTopics(root);
-    else if (r.view === "reviewHub") await viewReviewHub(root);
+    else if (r.view === "reviewHub") await viewReview(root, null);
     else if (r.view === "toc") await viewToc(root, r.topic);
     else if (r.view === "chapter") await viewChapter(root, r.topic, r.chapter);
     else if (r.view === "item") await viewItem(root, r.topic, r.item);
@@ -869,7 +950,7 @@ const PTR_RESIST = 0.6;
 const PTR_HOLD = 44;
 const PTR_MIN_MS = 600;
 const PTR_ANIM = "transform 0.25s ease, opacity 0.25s ease";
-const SITE_FILES = ["index.html", "assets/app.js", "assets/engine.js", "assets/sync.js", "assets/style.css"];
+const SITE_FILES = ["index.html", "assets/app.js", "assets/engine.js", "assets/plan.js", "assets/sync.js", "assets/style.css"];
 async function siteVersion() {
   try {
     const tags = await Promise.all(SITE_FILES.map(async (f) => {

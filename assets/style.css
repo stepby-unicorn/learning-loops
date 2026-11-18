@@ -251,3 +251,63 @@ details[open] > .ll-part-head::before { transform: rotate(90deg); }
 #item-sheet .ll-sheet-row-on { background: rgba(var(--f7-theme-color-rgb), 0.12); }
 #item-sheet .ll-sheet-name { font-size: 16px; font-weight: 400; }
 #item-sheet .ll-sheet-row-on .ll-sheet-name { font-weight: 700; }
+
+/* 일정보다 밀림: 빨강 — 밝은 모드 #d70015(흰 바탕 대비 5.4), 어두운 모드는 #d70015 가 어두운 바탕에서 3.2 라 밝힌 #ff6961(#1c1c1e 6.0 · #2a2f38 4.8) */
+:root { --ll-late: #d70015; }
+.dark { --ll-late: #ff6961; }
+.ll-late { color: var(--ll-late); }
+
+/* 오늘 ① 오늘 할 일: 주제마다 한 줄(오늘까지 잡힌 장 ID) + 재점검 대기 줄 */
+.ll-today-list { list-style: none; margin: 0; padding: 0; }
+.ll-today-row a { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 10px; min-height: 44px; padding: 10px 0; border-bottom: 1px solid var(--ll-bar-border); color: inherit; box-sizing: border-box; }
+.ll-today-row:last-child a { border-bottom: 0; }
+.ll-today-topic { flex: 1 1 auto; min-width: 0; font-size: 15px; color: var(--ll-ink-2); word-break: keep-all; overflow-wrap: anywhere; }
+.ll-today-chs { flex: none; max-width: 100%; font-size: 17px; font-weight: 700; overflow-wrap: anywhere; }
+.ll-today-ch { white-space: nowrap; }
+.ll-today-ch .ll-late { font-size: 13px; font-weight: 600; }
+.ll-today-num { flex: none; font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.ll-today-next { margin: 0; text-align: center; word-break: keep-all; overflow-wrap: anywhere; }
+
+/* 오늘 ② 이번 주 학습량: 요일마다 막대 두 개(읽은 항목 파랑 · 푼 문항 주황), 오늘 요일 굵게, 앞날은 흐리게 */
+.ll-week-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.ll-week-streak { font-size: 14px; color: var(--ll-ink-2); }
+.ll-week-streak b { font-size: 17px; color: var(--f7-text-color, inherit); }
+.ll-week-bars { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; margin-top: 8px; }
+.ll-week-day { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
+.ll-week-pair { display: flex; align-items: flex-end; justify-content: center; gap: 3px; width: 100%; height: 72px; border-bottom: 1px solid var(--ll-bar-border); }
+.ll-week-bar { width: 9px; min-height: 0; border-radius: 3px 3px 0 0; }
+.ll-week-items { background: var(--f7-color-blue, #007aff); }
+.ll-week-answers { background: var(--f7-color-orange, #ff9500); }
+.ll-week-label { font-size: 12px; color: var(--ll-ink-2); }
+.ll-week-today .ll-week-label { font-weight: 700; color: var(--f7-theme-color); }
+.ll-week-future .ll-week-label { opacity: 0.5; }
+
+/* 오늘 ③ 주제별 진행: 이름(줄바꿈 허용) + 진행 %, 막대, 일정 한 줄 */
+.ll-topics .ll-topic-row { display: block; }
+.ll-progress-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.ll-progress-name { flex: 1; min-width: 0; font-size: 16px; font-weight: 600; word-break: keep-all; overflow-wrap: anywhere; }
+.ll-progress-pct { flex: none; font-size: 14px; font-variant-numeric: tabular-nums; color: var(--ll-ink-2); }
+.ll-progress-plan { margin-top: 6px; font-size: 13px; color: var(--ll-ink-2); }
+.ll-progress-plan.ll-late { color: var(--ll-late); font-weight: 600; }
+.ll-progress-legend { margin-top: -8px; }
+
+/* 오늘 ④ 다가오는 7일 재점검: 날짜마다 칸 하나, 0 은 흐리게 */
+.ll-upcoming { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.ll-upcoming-day { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 0; padding: 8px 0; border-radius: 10px; background: rgba(var(--f7-theme-color-rgb), 0.1); }
+.ll-upcoming-date { font-size: 12px; color: var(--ll-ink-2); white-space: nowrap; }
+.ll-upcoming-n { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.ll-upcoming-none { background: rgba(127, 127, 127, 0.08); }
+.ll-upcoming-none .ll-upcoming-n { color: var(--ll-ink-2); font-weight: 400; }
+
+/* 목차: 장 행 오른쪽 둘째 줄 = 일정 날짜 */
+.ll-path-after { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; text-align: right; }
+.ll-path-date { font-size: 12px; white-space: nowrap; }
+.ll-path-date.ll-late { font-weight: 600; }
+
+/* 복습: 주제 칩(가로로 밀어 보기) — 칩 숫자 = 오늘 재점검 대기 수 */
+.ll-chip-row { display: flex; gap: 8px; overflow-x: auto; padding: 12px 16px 4px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.ll-chip-row::-webkit-scrollbar { display: none; }
+.ll-chip { flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 14px; border-radius: 18px; background: rgba(127, 127, 127, 0.14); color: inherit; font-size: 15px; white-space: nowrap; }
+.ll-chip-on { background: var(--f7-theme-color); color: #fff; font-weight: 600; }
+.ll-chip-n { font-variant-numeric: tabular-nums; font-weight: 700; }
+.ll-due-list .item-title { white-space: normal; word-break: keep-all; overflow-wrap: anywhere; }
