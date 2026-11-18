@@ -307,7 +307,7 @@ details[open] > .ll-part-head::before { transform: rotate(90deg); }
 /* 복습: 주제 칩(가로로 밀어 보기) — 칩 숫자 = 오늘 재점검 대기 수 */
 .ll-chip-row { display: flex; gap: 8px; overflow-x: auto; padding: 12px 16px 4px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
 .ll-chip-row::-webkit-scrollbar { display: none; }
-.ll-chip { flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 14px; border-radius: 18px; background: rgba(127, 127, 127, 0.14); color: inherit; font-size: 15px; white-space: nowrap; }
+.ll-chip { flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 14px; border-radius: 22px; background: rgba(127, 127, 127, 0.14); color: inherit; font-size: 15px; white-space: nowrap; }
 .ll-chip-on { background: var(--f7-theme-color); color: #fff; font-weight: 600; }
 .ll-chip-n { font-variant-numeric: tabular-nums; font-weight: 700; }
 .ll-due-list .item-title { white-space: normal; word-break: keep-all; overflow-wrap: anywhere; }

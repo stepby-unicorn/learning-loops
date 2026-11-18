@@ -194,21 +194,29 @@ async function loadAllTopics() {
 const scheduledToday = (entries) => entries.find((r) => r.plan && r.plan.pending.length) || null;
 
 // ---------- 아래에서 올라오는 시트(주제 바꾸기 · 장 안 항목 목록) — 가림막은 둘이 같이 쓴다 ----------
+// 시트를 연 요소 — 닫으면 그 요소로 포커스를 돌린다(화면이 바뀌어 문서에서 빠졌으면 돌리지 않음)
+let sheetOpener = null;
 function closeSheet() {
   document.querySelectorAll(".ll-sheet").forEach((s) => {
     s.classList.remove("ll-sheet-in");
     s.setAttribute("aria-hidden", "true");
   });
   $("#sheet-backdrop").classList.remove("ll-sheet-backdrop-in");
+  const opener = sheetOpener;
+  sheetOpener = null;
+  if (opener && opener.isConnected) opener.focus();
 }
 function showSheet(sheet) {
+  if (!sheet.classList.contains("ll-sheet-in") && document.activeElement !== document.body) sheetOpener = document.activeElement;
   sheet.classList.add("ll-sheet-in");
   sheet.setAttribute("aria-hidden", "false");
   $("#sheet-backdrop").classList.add("ll-sheet-backdrop-in");
   $(".ll-sheet-close", sheet).focus();
 }
 // 주제 바꾸기 시트(경로의 주제 이름을 누르면 열림) — 순서는 「주제」 탭과 같은 topics.json 순서
+// 주제를 받는 사이 화면이 바뀌었으면(route 세대가 다름) 열지 않는다 — 새 화면 위에 시트가 뜨지 않게
 async function openTopicSheet(currentId) {
+  const gen = routeGen;
   const rows = await Promise.all((await getTopics()).map(async (t) => {
     let line = "";
     try {
@@ -222,6 +230,7 @@ async function openTopicSheet(currentId) {
       <span class="ll-sheet-text"><span class="ll-sheet-name">${esc(t.title)}</span><span class="ll-sheet-sub">${line}</span></span>
       <span class="ll-sheet-check" aria-hidden="true">${on ? "✓" : ""}</span></a></li>`;
   }));
+  if (gen !== routeGen) return;
   $("#topic-sheet-body").innerHTML = `<ul class="ll-sheet-list">${rows.join("")}</ul>`;
   // 지금 주제를 다시 누르면 주소가 같아 hashchange 가 없으니 시트만 닫는다
   $("#topic-sheet-body").querySelectorAll(".ll-sheet-row").forEach((a) => { a.onclick = () => closeSheet(); });
@@ -500,7 +509,7 @@ async function viewItem(root, id, itemId) {
   const after = lastInChapter ? `#/t/${enc(id)}/done/${enc(ch.id)}` : `#/t/${enc(id)}/i/${enc(next.id)}`;
   const chRead = readCount(state, ch);
   // 위: 장 안 위치 「n / m」 + 장 읽음 막대 + 「항목 목록 ▾」(줄 전체가 버튼, 스크롤해도 머리줄 아래 고정)
-  // 아래: 탭 바로 위 고정 바 「‹ 이전 · 읽음 ✓ · 다음 ›」 — 채움은 「다음」 하나
+  // 아래: 탭 바로 위 고정 바 「‹ 이전 · 읽음 표시 · 다음 ›」 — 채움은 「다음」 하나
   root.innerHTML = `<button type="button" class="ll-itempos" id="btn-item-list" aria-haspopup="dialog" aria-label="${esc(ch.id)} 항목 ${ch.items.length}개 중 ${pos}번째, ${chRead}개 읽음 — 항목 목록 열기">
       <span class="ll-itempos-num" aria-hidden="true">${pos} / ${ch.items.length}</span>
       <span class="ll-itempos-bar" aria-hidden="true">${progressBar(ch.items.length ? chRead / ch.items.length : 0)}</span>
@@ -517,7 +526,7 @@ async function viewItem(root, id, itemId) {
         : `<span class="button button-large ll-itembar-btn disabled" aria-disabled="true">‹ 이전</span>`}
       ${read
         ? `<button type="button" class="button button-large ll-itembar-btn ll-read-on" id="btn-read"><span>✓ 읽음</span><small>누르면 취소</small></button>`
-        : `<button type="button" class="button button-large button-outline ll-itembar-btn" id="btn-read">읽음 ✓</button>`}
+        : `<button type="button" class="button button-large button-outline ll-itembar-btn" id="btn-read">읽음 표시</button>`}
       <a class="button button-large button-fill ll-itembar-btn" href="${after}">${lastInChapter ? "장 마치기 ›" : "다음 ›"}</a>
     </nav>`;
   $("#page").classList.add("ll-has-itembar");
@@ -604,7 +613,7 @@ async function viewReview(root, id) {
     </div>`}
     <div class="list list-strong inset list-dividers"><ul>
       <li class="item-content"><div class="item-inner"><div class="item-title">오늘 재점검</div><div class="item-after">${dueN}</div></div></li>
-      <li class="item-content"><div class="item-inner"><div class="item-title">새 문제 (1번 맞히면 통과)</div><div class="item-after">${freshN}</div></div></li>
+      <li class="item-content"><div class="item-inner"><div class="item-title">새 문제</div><div class="item-after">${freshN}</div></div></li>
       <li class="item-content"><div class="item-inner"><div class="item-title">아직 다 읽지 않은 장</div><div class="item-after">${notReady}</div></div></li>
     </ul></div>
     <div class="block grid grid-gap">
@@ -612,8 +621,7 @@ async function viewReview(root, id) {
       ${nextDue ? `<p class="ll-muted">다음 재점검 ${fmtDate(nextDue)}</p>` : ""}` : `<a class="button button-fill button-large" href="${id ? `#/t/${enc(id)}` : "#/topics"}">${id ? "목차에서 이어 읽기" : "주제에서 이어 읽기"}</a>`}
     </div>
     ${dueList}
-    <div class="block"><p class="ll-muted">재점검은 테스트를 통과한 뒤 ${intervalText()}일 뒤에 하고, 틀리면 1일 뒤로 돌아가요.</p>
-      <p class="ll-muted">항목을 모두 읽은 장의 문제만 나와요. 답을 고르고 확신을 고른 뒤 제출하면 정답이 열려요. 틀린 문제는 회차 끝에 한 번 더 나와요.</p></div>`;
+    <div class="block"><p class="ll-muted">재점검은 테스트를 통과한 뒤 ${intervalText()}일 뒤에 하고, 틀리면 1일 뒤로 돌아가요.</p></div>`;
   $(".ll-chip-on")?.scrollIntoView({ block: "nearest", inline: "center" });
   const back = id ? `#/t/${enc(id)}/review` : "#/review";
   if (!primary) return;
@@ -624,7 +632,8 @@ async function viewReview(root, id) {
 function runSession(root, id, cards, label, backHref) {
   runSessionParts(root, [{ id, cards }], label, backHref);
 }
-// 여러 주제를 한 회차로(복습 「전체」): 주제마다 엔진 회차를 따로 만들어 topics.json 순서로 이어 낸다 — 상태는 주제마다 저장
+// 여러 주제를 한 회차로(복습 「전체」): 주제마다 엔진 회차를 따로 만들어 topics.json 순서로 이어 낸다 — 상태는 주제마다 저장.
+// 틀린 문제는 회차 끝이 아니라 그 주제 차례 끝에 다시 나온다
 function multiSession(parts) {
   const subs = parts.filter((p) => p.cards.length).map((p) => { const state = loadState(p.id); return { id: p.id, state, sess: createSession(state, p.cards) }; });
   const sum = (k) => subs.reduce((n, x) => n + x.sess[k], 0);
@@ -701,10 +710,10 @@ function showCard(root, card, label, ratio, onGrade) {
       ${card.hint ? `<details class="ll-hint"><summary>단서 보기</summary><p>${esc(card.hint)}</p></details>` : ""}</div></div>
     ${choices}
     <div class="block-title">얼마나 확신하나요?</div>
-    <p id="pick-first" class="block ll-muted hidden">먼저 답을 고르세요.</p>
     <div class="block"><div class="segmented segmented-strong" id="conf">
       <button class="button" data-conf="0">모름</button><button class="button" data-conf="1">애매함</button><button class="button" data-conf="2">확신</button>
     </div></div>
+    <p id="conf-hint" class="block ll-muted">확신을 고르면 제출할 수 있어요.</p>
     <div class="block" id="submit-wrap"><button class="button button-fill button-large" id="btn-submit" disabled>제출</button></div>
     <div id="reveal" class="hidden">
       <div class="card ll-answer"><div class="card-header">정답</div><div class="card-content card-content-padding">
@@ -722,12 +731,17 @@ function showCard(root, card, label, ratio, onGrade) {
   // 보기 → 확신 → 제출 순서. 제출 전에는 보기·확신을 바꿀 수 있고, 제출해야 정답이 열린다
   let submitted = false;
   const canSubmit = () => conf !== null && (!card.choices || picked !== null);
-  const syncSubmit = () => { $("#btn-submit").disabled = !canSubmit(); };
-  root.querySelectorAll('input[name="ll-choice"]').forEach((r) => (r.onchange = () => { picked = Number(r.value); $("#pick-first").classList.add("hidden"); syncSubmit(); }));
+  // 확신 아래 안내 — 제출할 수 있게 되면 숨김, 답 없이 확신을 누르면 「먼저 답을 고르세요.」
+  const syncSubmit = () => {
+    $("#btn-submit").disabled = !canSubmit();
+    $("#conf-hint").textContent = "확신을 고르면 제출할 수 있어요.";
+    $("#conf-hint").classList.toggle("hidden", canSubmit());
+  };
+  root.querySelectorAll('input[name="ll-choice"]').forEach((r) => (r.onchange = () => { picked = Number(r.value); syncSubmit(); }));
   root.querySelectorAll("[data-conf]").forEach((b) => {
     b.onclick = () => {
       if (submitted) return;
-      if (card.choices && picked === null) { $("#pick-first").classList.remove("hidden"); return; }
+      if (card.choices && picked === null) { $("#conf-hint").textContent = "먼저 답을 고르세요."; return; }
       conf = Number(b.dataset.conf);
       root.querySelectorAll("[data-conf]").forEach((x) => x.classList.toggle("button-active", x === b));
       syncSubmit();
@@ -909,7 +923,10 @@ function parseRoute() {
 }
 // soft = 같은 화면을 다시 그릴 때(동기화로 바뀜·당겨서 새로고침) — 스크롤 위치를 지키고 0.15초 흐리게 바꿔 깜빡임을 줄인다
 const SOFT_FADE_MS = 150;
+// route 세대 — 부를 때마다 1 늘어, 기다리던 일이 그 사이 화면이 바뀌었는지 안다
+let routeGen = 0;
 async function route(soft) {
+  routeGen++;
   soft = soft === true;
   const r = parseRoute();
   const root = $("#content");
@@ -939,7 +956,8 @@ async function route(soft) {
   } catch (e) {
     root.innerHTML = `<div class="block">불러오지 못했습니다: ${esc(e.message)}</div>`;
   }
-  if (soft) { root.scrollTop = keepTop; root.classList.remove("ll-fading"); }
+  // 다른 화면은 맨 위에서 연다(soft 는 위치 유지)
+  if (soft) { root.scrollTop = keepTop; root.classList.remove("ll-fading"); } else root.scrollTop = 0;
 }
 // 당겨서 새로고침 — 스크롤이 문서가 아니라 #content 안에서 일어나 Safari 기본 동작이 걸리지 않는다.
 // 맨 위에서 당기면 본문이 손가락을 절반 속도로 따라오고, PTR_PULL 넘게 내려왔다 놓으면 지금 주제를 동기화한 뒤 화면만 다시 그린다.
