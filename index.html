@@ -16,23 +16,20 @@
 </head>
 <body>
 <div id="app" class="framework7-root">
-  <div class="panel-backdrop" id="backdrop"></div>
-  <div class="panel panel-left panel-cover" id="menu">
-    <div class="view"><div class="page">
-      <div class="navbar"><div class="navbar-bg"></div><div class="navbar-inner"><div class="title">학습 주제</div><div class="right"><a class="link" id="btn-menu-close" href="#">닫기</a></div></div></div>
-      <div class="page-content" id="menu-content"></div>
-      <div class="ll-menu-sync" id="menu-sync"></div>
-    </div></div>
-  </div>
   <div class="view view-main"><div class="page" id="page">
     <div class="navbar"><div class="navbar-bg"></div><div class="navbar-inner">
-      <div class="left"><a class="link icon-only" id="btn-menu" href="#" aria-label="메뉴 열기"><span class="ll-burger" aria-hidden="true"></span></a></div>
-      <div class="title" id="page-title">학습 온보딩</div>
-      <div class="right"><a class="link icon-only" id="btn-sync-state" href="#/settings" aria-label="동기화 설정"><span class="ll-sync-ico" id="sync-ico" aria-hidden="true">☁</span></a></div>
+      <div class="left" id="nav-left"></div>
+      <div class="title ll-path" id="page-title">학습 온보딩</div>
+      <div class="right"></div>
     </div></div>
-    <div class="toolbar tabbar toolbar-bottom hidden" id="tabbar"><div class="toolbar-inner" id="tabbar-inner"></div></div>
     <div class="page-content" id="content">불러오는 중…</div>
   </div></div>
+  <nav class="ll-tabbar hidden" id="tabbar" aria-label="화면"></nav>
+  <div class="ll-sheet-backdrop" id="sheet-backdrop"></div>
+  <div class="ll-sheet" id="topic-sheet" role="dialog" aria-modal="true" aria-labelledby="topic-sheet-title" aria-hidden="true">
+    <div class="ll-sheet-head"><div class="ll-sheet-title" id="topic-sheet-title">주제 바꾸기</div><button type="button" class="ll-sheet-close" id="btn-sheet-close">닫기</button></div>
+    <div class="ll-sheet-body" id="topic-sheet-body"></div>
+  </div>
 </div>
 <script src="assets/engine.js"></script>
 <script src="assets/sync.js"></script>

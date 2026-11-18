@@ -1,11 +1,14 @@
 // 학습 온보딩 화면 — 주소(#/…)마다 화면을 그린다. 규칙은 assets/engine.js
-//   #/                          주제 목록
-//   #/t/<주제>                  목차(부별 장·진행)
+// 아래 탭 4개(오늘 · 주제 · 복습 · 설정)를 모든 화면에 고정하고, 테스트 회차 중에만 숨긴다.
+//   #/ · #/today                오늘(이어 읽기·주제별 진행)
+//   #/topics                    주제 — 주제 카드 목록
+//   #/t/<주제>                  목차(부별 접기·장 상태)
 //   #/t/<주제>/c/<장>           장 — 항목 읽음 체크 + 그 장 테스트
 //   #/t/<주제>/i/<항목 id>      항목 읽기(항목 id = <장>#<절 이름>)
 //   #/t/<주제>/done/<장>        장 완료 — 장 테스트 · 다음 장 읽기
-//   #/t/<주제>/review           복습·테스트(항목을 모두 읽은 장의 문항)
-//   #/t/<주제>/log              기록 — 결과 보내기(GitHub 동기화)·요약 복사·백업
+//   #/review                    복습 — 주제별 대기 수
+//   #/t/<주제>/review           주제 복습·테스트(항목을 모두 읽은 장의 문항)
+//   #/settings · #/t/<주제>/log 설정 — 동기화 · 결과 보내기 · 요약 복사 · 백업(log 는 그 주제를 고른 설정)
 // 데이터: topics/topics.json(주제 목록) · topics/<주제>/index.json(구조·문항) · topics/<주제>/<장>.json(장 본문, 열 때 불러옴)
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -99,88 +102,121 @@ const findChapter = (topic, chapterId) => topic.chapters.find((c) => c.id === ch
 const chapterOfItem = (topic, itemId) => topic.chapters.find((c) => c.items.some((it) => it.id === itemId));
 const readCount = (state, ch) => ch.items.filter((it) => state.read[it.id]).length;
 
-// ---------- 서랍 메뉴: 최상위 = 주제, 펼치면 장 목록 ----------
-function openMenu(open) {
-  $("#menu").classList.toggle("panel-in", open);
-  $("#backdrop").classList.toggle("panel-backdrop-in", open);
-  document.documentElement.classList.toggle("with-panel-left-cover", open);
-}
-$("#btn-menu").onclick = (e) => { e.preventDefault(); openMenu(!$("#menu").classList.contains("panel-in")); };
-$("#btn-menu-close").onclick = (e) => { e.preventDefault(); openMenu(false); };
-$("#backdrop").onclick = () => openMenu(false);
+// ---------- 공통 틀: 위 막대(뒤로 ‹ · 경로 한 줄) + 아래 탭 4개 ----------
+// 아이콘은 선 그림 SVG(아이콘 글꼴 없음). 24×24 좌표, 색 = 글자 색
+const TAB_ICON = {
+  today: '<rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/><path d="M8.5 14.5l2.2 2.2 4.3-4.4"/>',
+  topics: '<path d="M4 5.5C4 4.7 4.7 4 5.5 4H10c1.1 0 2 .9 2 2v14c0-1.1-.9-2-2-2H5.5c-.8 0-1.5-.7-1.5-1.5z"/><path d="M20 5.5c0-.8-.7-1.5-1.5-1.5H14c-1.1 0-2 .9-2 2v14c0-1.1.9-2 2-2h4.5c.8 0 1.5-.7 1.5-1.5z"/>',
+  review: '<path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4.5v4h-4"/><path d="M12 8.5V12l2.5 1.5"/>',
+  settings: '<circle cx="12" cy="12" r="3"/><path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M5.5 18.5l1.7-1.7M16.8 7.2l1.7-1.7"/><circle cx="12" cy="12" r="6.2"/>',
+};
+const TABS = [
+  { key: "today", label: "오늘", href: "#/today" },
+  { key: "topics", label: "주제", href: "#/topics" },
+  { key: "review", label: "복습", href: "#/review" },
+  { key: "settings", label: "설정", href: "#/settings" },
+];
+$("#tabbar").innerHTML = TABS.map((t) => `<a class="ll-tab" href="${t.href}" data-tab="${t.key}">
+    <span class="ll-tab-ico"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${TAB_ICON[t.key]}</svg>${t.key === "review" ? '<span class="ll-badge hidden" id="review-badge"></span>' : ""}</span>
+    <span class="ll-tab-label">${t.label}</span></a>`).join("");
 
-async function renderMenu(route) {
-  const topics = await getTopics();
-  const parts = await Promise.all(topics.map(async (t) => {
-    const opened = route.topic === t.id;
-    let inner = "";
-    if (opened) {
+// 지금 그린 틀(테스트 회차가 끝나면 이 틀로 되돌린다)
+let lastFrame = null;
+// opts: title(문서 제목·경로가 없을 때 가운데 글), tab(오늘·주제·복습·설정 중 지금 탭), topic(경로의 주제 — 누르면 주제 바꾸기 시트),
+//       crumb·crumbHref(경로 둘째 칸, 예: 장 ID), back(왼쪽 ‹ 가 갈 주소, 없으면 버튼 없음)
+function setFrame(opts) {
+  lastFrame = opts;
+  const { title, tab, topic, crumb, crumbHref, back } = opts;
+  document.title = `${title} · 학습 온보딩`;
+  $("#nav-left").innerHTML = back ? `<a class="link ll-nav-back" href="${back}" aria-label="뒤로"><span aria-hidden="true">‹</span></a>` : "";
+  $("#page-title").innerHTML = topic
+    ? `<a href="#" role="button" class="ll-path-topic" id="btn-topic-sheet" aria-haspopup="dialog" aria-label="${esc(topic.title)} — 주제 바꾸기"><span class="ll-path-name">${esc(topic.title)}</span><span class="ll-path-caret" aria-hidden="true">▾</span></a>${crumb
+      ? `<span class="ll-path-sep" aria-hidden="true">›</span>${crumbHref ? `<a class="ll-path-crumb" href="${crumbHref}">${esc(crumb)}</a>` : `<span class="ll-path-crumb">${esc(crumb)}</span>`}` : ""}`
+    : `<span class="ll-path-title">${esc(title)}</span>`;
+  // <button> 으로 두면 폭이 글자보다 넓게 잡혀 ▾ 와 › 사이가 벌어진다(375px 실측) — 링크에 role=button 으로 둔다
+  if (topic) $("#btn-topic-sheet").onclick = (e) => { e.preventDefault(); openTopicSheet(topic.id); };
+  $("#tabbar").classList.remove("hidden");
+  $("#page").classList.add("ll-has-tabbar");
+  $("#tabbar").querySelectorAll(".ll-tab").forEach((a) => {
+    const on = a.dataset.tab === tab;
+    a.classList.toggle("ll-tab-active", on);
+    if (on) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
+  });
+}
+// 테스트 회차 중: 아래 탭을 숨기고 위 막대엔 「그만두기」만 — 답은 문제마다 저장돼 그만둬도 푼 만큼 남는다
+function setSessionFrame(quitHref) {
+  $("#tabbar").classList.add("hidden");
+  $("#page").classList.remove("ll-has-tabbar");
+  $("#page-title").innerHTML = "";
+  $("#nav-left").innerHTML = `<a class="link ll-nav-quit" href="#" id="btn-quit">그만두기</a>`;
+  // 회차는 주소를 바꾸지 않고 진행해 quitHref 가 지금 주소와 같을 수 있다 — 같으면 hashchange 가 없으니 직접 다시 그린다
+  $("#btn-quit").onclick = (e) => { e.preventDefault(); if (location.hash === quitHref) route(); else location.hash = quitHref; };
+}
+// 「복습」 탭 배지 = 모든 주제의 오늘 재점검 대기 수
+async function updateReviewBadge() {
+  let due = 0;
+  for (const t of await getTopics()) {
+    try { due += topicProgress(await getTopic(t.id), loadState(t.id)).due; } catch { /* 못 읽은 주제는 빼고 센다 */ }
+  }
+  const b = $("#review-badge");
+  b.textContent = due > 99 ? "99+" : String(due);
+  b.classList.toggle("hidden", !due);
+  b.closest(".ll-tab").setAttribute("aria-label", due ? `복습, 재점검 대기 ${due}` : "복습");
+}
+// 진행 % = 테스트 통과 이상 장 / 전체 장
+const topicPercent = (p) => (p.chapters ? Math.round(((p.tested + p.mastered) / p.chapters) * 100) : 0);
+// 다음 장 = 아직 안 읽은 첫 항목이 든 장
+function nextUnread(topic, state) {
+  const item = allItems(topic).find((it) => !state.read[it.id]);
+  return item ? { item, chapter: findChapter(topic, item.chapterId) } : null;
+}
+
+// ---------- 주제 바꾸기 시트(경로의 주제 이름을 누르면 아래에서 올라옴) — 순서는 「주제」 탭과 같은 topics.json 순서 ----------
+function closeTopicSheet() {
+  $("#topic-sheet").classList.remove("ll-sheet-in");
+  $("#topic-sheet").setAttribute("aria-hidden", "true");
+  $("#sheet-backdrop").classList.remove("ll-sheet-backdrop-in");
+}
+async function openTopicSheet(currentId) {
+  const rows = await Promise.all((await getTopics()).map(async (t) => {
+    let line = "";
+    try {
       const topic = await getTopic(t.id);
       const state = loadState(t.id);
-      const current = route.chapter || (route.item && chapterOfItem(topic, route.item)?.id);
-      let lastPart = null;
-      const rows = topic.chapters.map((ch) => {
-        const head = ch.part && ch.part !== lastPart ? `<li class="ll-menu-section">${esc(ch.part)}</li>` : "";
-        lastPart = ch.part;
-        const st = chapterStage(state, ch);
-        return `${head}<li><a class="item-link item-content ${current === ch.id ? "ll-current" : ""}" href="#/t/${enc(t.id)}/c/${enc(ch.id)}">
-          <div class="item-media ll-stage ll-stage-${st}" title="${STAGE_LABEL[st]}">${STAGE_ICON[st]}</div>
-          <div class="item-inner"><div class="item-title">${esc(ch.title)}</div></div></a></li>`;
-      }).join("");
-      inner = `<div class="accordion-item-content"><div class="list list-dividers ll-menu-items"><ul>
-        <li><a class="item-link item-content" href="#/t/${enc(t.id)}"><div class="item-inner"><div class="item-title">목차·진행</div></div></a></li>
-        <li><a class="item-link item-content" href="#/t/${enc(t.id)}/review"><div class="item-inner"><div class="item-title">복습·테스트</div></div></a></li>
-        ${rows}</ul></div></div>`;
-    }
-    return `<li class="accordion-item ${opened ? "accordion-item-opened" : ""}">
-      <a class="item-link item-content" href="#/t/${enc(t.id)}"><div class="item-inner"><div class="item-title">${esc(t.title)}</div></div></a>${inner}</li>`;
+      const n = nextUnread(topic, state);
+      line = `진행 ${topicPercent(topicProgress(topic, state))}% · ${n ? `다음 ${esc(n.chapter.id)}` : "다 읽음"}`;
+    } catch (e) { line = `읽지 못함: ${esc(e.message)}`; }
+    const on = t.id === currentId;
+    return `<li><a class="ll-sheet-row${on ? " ll-sheet-row-on" : ""}" href="#/t/${enc(t.id)}"${on ? ' aria-current="true"' : ""}>
+      <span class="ll-sheet-text"><span class="ll-sheet-name">${esc(t.title)}</span><span class="ll-sheet-sub">${line}</span></span>
+      <span class="ll-sheet-check" aria-hidden="true">${on ? "✓" : ""}</span></a></li>`;
   }));
-  $("#menu-content").innerHTML = `<div class="list accordion-list list-strong ll-menu"><ul>
-    <li><a class="item-link item-content" href="#/"><div class="item-inner"><div class="item-title">전체 주제</div></div></a></li>
-    ${parts.join("")}</ul></div>`;
-  $("#menu-sync").innerHTML = `<div class="list list-strong"><ul><li>${syncRow()}</li></ul></div>`;
-  $("#menu-content .ll-current")?.scrollIntoView({ block: "center" });
+  $("#topic-sheet-body").innerHTML = `<ul class="ll-sheet-list">${rows.join("")}</ul>`;
+  // 지금 주제를 다시 누르면 주소가 같아 hashchange 가 없으니 시트만 닫는다
+  $("#topic-sheet-body").querySelectorAll(".ll-sheet-row").forEach((a) => { a.onclick = () => closeTopicSheet(); });
+  $("#topic-sheet").classList.add("ll-sheet-in");
+  $("#topic-sheet").setAttribute("aria-hidden", "false");
+  $("#sheet-backdrop").classList.add("ll-sheet-backdrop-in");
+  $("#btn-sheet-close").focus();
 }
-
-// ---------- 공통 틀 ----------
-function setFrame(title, tabs) {
-  $("#page-title").textContent = title;
-  document.title = `${title} · 학습 온보딩`;
-  $("#tabbar").classList.toggle("hidden", !tabs);
-  $("#page").classList.toggle("ll-has-tabbar", !!tabs);
-  updateSyncIcon();
-  if (tabs) {
-    $("#tabbar-inner").innerHTML = tabs.map((t) => `<a class="tab-link ${t.active ? "tab-link-active" : ""}" href="${t.href}"><span class="tabbar-label">${esc(t.label)}${t.badge ? ` <span class="badge color-red">${t.badge}</span>` : ""}</span></a>`).join("");
-  }
-}
-// 머리줄 오른쪽 버튼: 동기화 연결 여부를 보여 주고 누르면 동기화 설정(#/settings)으로 간다
-function updateSyncIcon() {
-  const cfg = syncConfig();
-  const ico = $("#sync-ico");
-  ico.classList.toggle("ll-sync-off", !cfg);
-  $("#btn-sync-state").setAttribute("aria-label", cfg ? `동기화 연결됨 (${cfg.repo})` : "동기화 연결 안 됨 — 설정 열기");
-}
-function topicTabs(id, active, p) {
-  return [
-    { label: "목차", href: `#/t/${enc(id)}`, active: active === "toc" },
-    { label: "복습·테스트", href: `#/t/${enc(id)}/review`, active: active === "review", badge: p ? p.due + p.fresh : 0 },
-    { label: "기록", href: `#/t/${enc(id)}/log`, active: active === "log" },
-  ];
-}
+$("#sheet-backdrop").onclick = closeTopicSheet;
+$("#btn-sheet-close").onclick = closeTopicSheet;
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeTopicSheet(); });
 function progressBar(ratio) {
   return `<span class="progressbar" aria-valuenow="${Math.round(ratio * 100)}"><span style="transform:translate3d(${-100 + ratio * 100}%,0,0)"></span></span>`;
 }
 // 읽음·테스트 통과·숙달을 한 막대에 겹쳐 그린다(항목 수 기준 — 테스트 통과·숙달은 그 단계 장의 항목 수). 숫자 앞 점 색 = 막대 색
-function stageBar(topic, state, p) {
+// legend = false 면 막대만(주제 카드)
+function stageBar(topic, state, p, legend = true) {
   const itemsAt = (stages) => topic.chapters.filter((c) => stages.includes(chapterStage(state, c))).reduce((n, c) => n + c.items.length, 0);
   const tested = itemsAt(["tested", "mastered"]);
   const mastered = itemsAt(["mastered"]);
   const pct = (n) => (p.items ? (n / p.items) * 100 : 0).toFixed(1);
   return `<div class="ll-stack" role="img" aria-label="항목 ${p.items}개 중 읽음 ${p.readTotal}">
       <span class="ll-stack-read" style="width:${pct(p.readTotal)}%"></span><span class="ll-stack-tested" style="width:${pct(tested)}%"></span><span class="ll-stack-mastered" style="width:${pct(mastered)}%"></span></div>
-    <div class="ll-stack-legend"><span><i class="ll-dot ll-dot-read"></i>읽음 ${p.readTotal}</span><span><i class="ll-dot ll-dot-tested"></i>테스트 통과 ${p.tested + p.mastered}장</span><span><i class="ll-dot ll-dot-mastered"></i>숙달 ${p.mastered}장</span><span class="ll-stack-total">${p.items}항목</span></div>`;
+    ${legend ? `<div class="ll-stack-legend"><span><i class="ll-dot ll-dot-read"></i>읽음 ${p.readTotal}</span><span><i class="ll-dot ll-dot-tested"></i>테스트 통과 ${p.tested + p.mastered}장</span><span><i class="ll-dot ll-dot-mastered"></i>숙달 ${p.mastered}장</span><span class="ll-stack-total">${p.items}항목</span></div>` : ""}`;
 }
-// 동기화 상태 한 줄(홈·기록·서랍 메뉴 맨 아래)
+// 동기화 상태 한 줄(오늘·설정)
 function syncRow() {
   const cfg = syncConfig();
   return `<a class="item-link item-content" href="#/settings"><div class="item-media"><i class="ll-dot ${cfg ? "ll-dot-on" : "ll-dot-off"}"></i></div><div class="item-inner">
@@ -199,9 +235,9 @@ function continueTarget(entries) {
   return best;
 }
 
-// ---------- 주제 목록 ----------
+// ---------- 오늘: 이어 읽기 · 주제별 진행 · 동기화 한 줄 ----------
 async function viewHome(root) {
-  setFrame("학습 온보딩", null);
+  setFrame({ title: "오늘", tab: "today" });
   const topics = await getTopics();
   const loaded = await Promise.all(topics.map(async (t) => {
     try {
@@ -235,41 +271,80 @@ async function viewHome(root) {
     <div class="block"><p class="ll-muted">항목을 다 읽은 장은 문제로 테스트하고, 1·3·7·21·60·180일 뒤에 다시 점검합니다.</p></div>`;
 }
 
-// ---------- 목차: 부별 장 목록 ----------
+// ---------- 주제: 주제 카드 한 줄에 하나 — 이름은 줄바꿈(말줄임 없음), 진행 막대, 「다음: <장 ID>」 이어 읽기 ----------
+async function viewTopics(root) {
+  setFrame({ title: "주제", tab: "topics" });
+  const topics = await getTopics();
+  const loaded = await Promise.all(topics.map(async (t) => {
+    try {
+      const topic = await getTopic(t.id);
+      const state = loadState(t.id);
+      return { t, topic, state, p: topicProgress(topic, state), next: nextUnread(topic, state) };
+    } catch (e) { return { t, error: e.message }; }
+  }));
+  // 채움 버튼은 하나 — 가장 최근에 읽은 주제(일정 데이터가 생기면 오늘 일정 주제로 바꿀 자리)
+  const go = continueTarget(loaded.filter((r) => !r.error));
+  const cards = loaded.map((r) => {
+    if (r.error) return `<div class="card ll-topic-card"><div class="card-content card-content-padding"><div class="ll-topic-name">${esc(r.t.title)}</div><p class="ll-muted">읽지 못함: ${esc(r.error)}</p></div></div>`;
+    const { t, topic, state, p, next } = r;
+    const primary = go && go.t.id === t.id;
+    const btn = next
+      ? `<a class="button button-large ${primary ? "button-fill" : "button-tonal"} ll-topic-next" href="#/t/${enc(t.id)}/i/${enc(next.item.id)}">다음: ${esc(next.chapter.id)}</a>`
+      : `<p class="ll-state">모든 항목을 읽었어요.</p>`;
+    return `<div class="card ll-topic-card"><div class="card-content card-content-padding">
+      <a class="ll-topic-head" href="#/t/${enc(t.id)}"><span class="ll-topic-name">${esc(t.title)}</span><span class="ll-topic-more" aria-hidden="true">›</span></a>
+      <p class="ll-muted ll-topic-meta">진행 ${topicPercent(p)}% · 읽음 ${p.readTotal}/${p.items}항목 · ${p.chapters}장</p>
+      ${stageBar(topic, state, p, false)}
+      ${btn}</div></div>`;
+  });
+  root.innerHTML = cards.length ? `<div class="ll-topic-cards">${cards.join("")}</div>` : `<div class="block">주제가 없습니다.</div>`;
+}
+
+// ---------- 목차: 부별 접기 · 장을 세로 경로로 잇고 상태 기호 · 「지금 장으로」 ----------
 async function viewToc(root, id) {
   const topic = await getTopic(id);
   const state = loadState(id);
   const p = topicProgress(topic, state);
-  setFrame(topic.title, topicTabs(id, "toc", p));
-  const next = allItems(topic).find((it) => !state.read[it.id]);
+  setFrame({ title: topic.title, tab: "topics", topic, back: "#/topics" });
+  const n = nextUnread(topic, state);
+  const nextCh = n && n.chapter;
   const groups = [];
   for (const ch of topic.chapters) {
     const last = groups[groups.length - 1];
     if (last && last.part === (ch.part || "")) last.chapters.push(ch);
     else groups.push({ part: ch.part || "", chapters: [ch] });
   }
-  const nextCh = next && findChapter(topic, next.chapterId);
-  // 장 행 오른쪽: 읽는 중·읽기 전은 읽은 수, 그 뒤 단계는 단계 이름. 다음에 읽을 장은 강조
-  const html = groups.map((g) => `${g.part ? `<div class="block-title">${esc(g.part)}</div>` : ""}
-    <div class="list list-strong list-dividers inset ll-toc"><ul>${g.chapters.map((ch) => {
-      const st = chapterStage(state, ch);
-      const after = st === "unread" || st === "reading" ? `${readCount(state, ch)}/${ch.items.length}${st === "reading" ? " 읽음" : ""}` : STAGE_LABEL[st];
-      return `<li><a class="item-link item-content ${nextCh === ch ? "ll-current" : ""}" href="#/t/${enc(id)}/c/${enc(ch.id)}">
-        <div class="item-media ll-stage ll-stage-${st}" title="${STAGE_LABEL[st]}">${STAGE_ICON[st]}</div>
-        <div class="item-inner"><div class="item-title">${esc(ch.title)}</div>
-        <div class="item-after">${after}</div></div></a></li>`;
-    }).join("")}</ul></div>`).join("");
-  const waiting = p.due + p.fresh;
+  // 장 행 오른쪽: 읽는 중·읽기 전은 읽은 수, 그 뒤 단계는 단계 이름. 지금 장(다음에 읽을 장)은 강조
+  const rows = (g) => `<ol class="ll-path-list">${g.chapters.map((ch) => {
+    const st = chapterStage(state, ch);
+    const after = st === "unread" || st === "reading" ? `${readCount(state, ch)}/${ch.items.length}${st === "reading" ? " 읽음" : ""}` : STAGE_LABEL[st];
+    const now = nextCh === ch;
+    return `<li class="ll-path-row ll-path-${st}${now ? " ll-path-now" : ""}"${now ? ' id="toc-now"' : ""}><a href="#/t/${enc(id)}/c/${enc(ch.id)}"${now ? ' aria-current="step"' : ""}>
+      <span class="ll-path-mark ll-stage-${st}" title="${STAGE_LABEL[st]}" aria-label="${STAGE_LABEL[st]}">${STAGE_ICON[st]}</span>
+      <span class="ll-path-text">${esc(ch.title)}</span><span class="ll-path-after">${after}</span></a></li>`;
+  }).join("")}</ol>`;
+  // 지금 장이 든 부만 펼친다(다 읽었으면 모두 펼침). 부 이름이 없으면 접지 않는다
+  const html = groups.map((g) => {
+    if (!g.part) return `<div class="ll-part">${rows(g)}</div>`;
+    const done = g.chapters.filter((ch) => ["tested", "mastered"].includes(chapterStage(state, ch))).length;
+    const open = !nextCh || g.chapters.includes(nextCh) || groups.length === 1;
+    return `<details class="ll-part"${open ? " open" : ""}><summary class="ll-part-head"><span class="ll-part-name">${esc(g.part)}</span><span class="ll-part-count">${g.chapters.length}장 · 통과 ${done}</span></summary>${rows(g)}</details>`;
+  }).join("");
   root.innerHTML = `<div class="block">
       ${topic.summary ? `<p class="ll-muted">${esc(topic.summary)}</p>` : ""}
       ${stageBar(topic, state, p)}
-      ${next ? `<a class="button button-fill button-large ll-actions" href="#/t/${enc(id)}/i/${enc(next.id)}">${esc(nextCh.id)} 이어 읽기</a>` : `<p class="ll-state">모든 항목을 읽었어요.</p>`}
+      ${n ? `<a class="button button-fill button-large ll-actions" href="#/t/${enc(id)}/i/${enc(n.item.id)}">${esc(nextCh.id)} 이어 읽기</a>` : `<p class="ll-state">모든 항목을 읽었어요.</p>`}
     </div>
-    <div class="list list-strong inset"><ul><li><a class="item-link item-content" href="#/t/${enc(id)}/review"><div class="item-inner">
-      <div class="item-title">복습·테스트${p.nextDue && !waiting ? `<div class="item-footer">다음 재점검 ${fmtDate(p.nextDue)}</div>` : ""}</div>
-      <div class="item-after">대기 ${waiting}</div></div></a></li></ul></div>
-    ${html}
-    <div class="block ll-legend"><p class="ll-muted">${Object.entries(STAGE_ICON).map(([k, v]) => `<span class="ll-stage-${k}">${v}</span> ${STAGE_LABEL[k]}`).join(" · ")}</p></div>`;
+    <div class="ll-toc-parts">${html}</div>
+    <div class="block ll-legend"><p class="ll-muted">${Object.entries(STAGE_ICON).map(([k, v]) => `<span class="ll-stage-${k}">${v}</span> ${STAGE_LABEL[k]}`).join(" · ")}</p></div>
+    ${nextCh ? `<button type="button" class="ll-fab" id="btn-now">지금 장으로</button>` : ""}`;
+  if (nextCh) $("#btn-now").onclick = () => {
+    const row = $("#toc-now");
+    const part = row.closest("details");
+    if (part) part.open = true;
+    row.scrollIntoView({ behavior: "smooth", block: "center" });
+    row.querySelector("a").focus({ preventScroll: true });
+  };
 }
 
 // ---------- 장: 항목 체크 + 장 테스트 ----------
@@ -278,7 +353,7 @@ async function viewChapter(root, id, chapterId) {
   const ch = findChapter(topic, chapterId);
   if (!ch) { root.innerHTML = `<div class="block">장이 없습니다.</div>`; return; }
   const state = loadState(id);
-  setFrame(topic.title, topicTabs(id, "toc", topicProgress(topic, state)));
+  setFrame({ title: `${ch.id} · ${topic.title}`, tab: "topics", topic, crumb: ch.id, back: `#/t/${enc(id)}` });
   const st = chapterStage(state, ch);
   const done = readCount(state, ch);
   const allRead = done === ch.items.length;
@@ -336,7 +411,7 @@ async function viewItem(root, id, itemId) {
   const body = await getChapterBody(id, ch.id);
   const html = body.items.find((b) => b.id === it.id)?.html || "";
   const state = loadState(id);
-  setFrame(topic.title, topicTabs(id, "toc", topicProgress(topic, state)));
+  setFrame({ title: `${it.title} · ${topic.title}`, tab: "topics", topic, crumb: ch.id, crumbHref: `#/t/${enc(id)}/c/${enc(ch.id)}`, back: `#/t/${enc(id)}/c/${enc(ch.id)}` });
   const next = items[idx + 1];
   const prev = items[idx - 1];
   const read = !!state.read[it.id];
@@ -372,7 +447,7 @@ async function viewDone(root, id, chapterId) {
   const ch = findChapter(topic, chapterId);
   if (!ch) { root.innerHTML = `<div class="block">장이 없습니다.</div>`; return; }
   const state = loadState(id);
-  setFrame(topic.title, topicTabs(id, "toc", topicProgress(topic, state)));
+  setFrame({ title: `${ch.id} · ${topic.title}`, tab: "topics", topic, crumb: ch.id, crumbHref: `#/t/${enc(id)}/c/${enc(ch.id)}`, back: `#/t/${enc(id)}/c/${enc(ch.id)}` });
   const done = readCount(state, ch);
   const unread = ch.items.filter((it) => !state.read[it.id]);
   const { fresh, due } = reviewQueue(topic, state, Date.now(), ch.id);
@@ -406,7 +481,7 @@ async function viewReview(root, id) {
   const topic = await getTopic(id);
   const state = loadState(id);
   const p = topicProgress(topic, state);
-  setFrame(topic.title, topicTabs(id, "review", p));
+  setFrame({ title: `복습 · ${topic.title}`, tab: "review", topic, crumb: "복습", back: "#/review" });
   const { fresh, due } = reviewQueue(topic, state);
   const notReady = topic.chapters.filter((ch) => (ch.cards || []).length && readCount(state, ch) < ch.items.length).length;
   // 채움 버튼은 하나만 — 재점검이 있으면 재점검, 없으면 새 문제
@@ -438,17 +513,14 @@ function runSession(root, id, cards, label, backHref) {
   const state = loadState(id);
   const sess = createSession(state, cards);
   inSession = true;
+  setSessionFrame(backHref);
   const step = () => {
     const card = sess.next();
     if (!card) {
       inSession = false;
-      // 아래 탭 배지(오늘 재점검 + 새 문제)를 회차 결과로 다시 센다
-      const shownAt = location.hash;
-      if (!$("#tabbar").classList.contains("hidden")) getTopic(id).then((topic) => {
-        if (location.hash !== shownAt || inSession) return;
-        const tab = $("#tabbar-inner .tab-link-active");
-        setFrame($("#page-title").textContent, topicTabs(id, tab ? ["toc", "review", "log"][[...tab.parentNode.children].indexOf(tab)] : null, topicProgress(topic, state)));
-      }).catch(() => {});
+      // 회차가 끝나면 아래 탭·위 막대를 시작 전 화면 틀로 되돌리고 배지를 회차 결과로 다시 센다
+      setFrame(lastFrame);
+      updateReviewBadge().catch(() => {});
       const failed = sess.failed;
       const cardById = Object.fromEntries(cards.map((c) => [c.id, c]));
       // 틀린 문제의 내 답 = 이 회차 기록에서 그 카드의 마지막 답
@@ -467,7 +539,7 @@ function runSession(root, id, cards, label, backHref) {
         <div class="list list-strong inset list-dividers ll-unsure"><ul>${sess.unsure.map((u) => `<li class="item-content"><div class="item-inner"><div class="item-title">${esc(u)} ${esc(cardById[u]?.q || "")}
           <div class="item-footer">정답: ${esc(cardById[u]?.a || "")}</div></div></div></li>`).join("")}</ul></div>` : ""}
         <div class="block grid grid-gap"><button class="button button-fill button-large" id="btn-back">돌아가기</button>
-          <p class="ll-muted">결과는 <a href="#/t/${enc(id)}/log">기록</a>에서 「결과 보내기」로 리뷰 세션에 넘겨요.</p></div>`;
+          <p class="ll-muted">결과는 <a href="#/t/${enc(id)}/log">설정</a>에서 「결과 보내기」로 리뷰 세션에 넘겨요.</p></div>`;
       // 회차는 주소를 바꾸지 않고 진행해 backHref 가 지금 주소와 같을 수 있다 — 같으면 hashchange 가 없으니 직접 다시 그린다
       $("#btn-back").onclick = () => { if (location.hash === backHref) route(); else location.hash = backHref; };
       return;
@@ -556,51 +628,49 @@ function showCard(root, card, label, ratio, onGrade) {
   });
 }
 
-// ---------- 기록: 결과 보내기(GitHub 동기화) · 요약 복사 · 백업 ----------
-async function viewLog(root, id) {
-  const topic = await getTopic(id);
-  const state = loadState(id);
-  setFrame(topic.title, topicTabs(id, "log", topicProgress(topic, state)));
-  const cfg = syncConfig();
-  const syncBlock = cfg
-    ? `<div class="block-title">GitHub 동기화</div>
-      <div class="list list-strong inset list-dividers"><ul>
-        <li><a class="item-link item-content" href="#/settings"><div class="item-inner"><div class="item-title">저장소</div><div class="item-after">${esc(cfg.repo)}</div></div></a></li>
-        <li class="item-content"><div class="item-inner"><div class="item-title">마지막 동기화</div><div class="item-after" id="sync-status">${esc(lastSyncText(id))}</div></div></li>
-        <li><a class="item-link item-content" href="#/settings"><div class="item-inner"><div class="item-title">동기화 내역</div></div></a></li>
-      </ul></div>
-      <div class="block grid grid-gap">
-        <button class="button button-fill button-large" id="btn-send">결과 보내기</button>
-        <p id="send-out" class="ll-muted hidden"></p>
-        <button class="button button-tonal" id="btn-sync">지금 동기화</button>
-      </div>`
-    : `<div class="block-title">GitHub 동기화</div>
-      <div class="list list-strong inset"><ul><li>${syncRow()}</li></ul></div>`;
-  root.innerHTML = `<div class="block-title block-title-medium">기록</div>
-    ${syncBlock}
-    <div class="block-title">직접 옮기기</div>
+// ---------- 설정: GitHub 동기화(기기마다 한 번, 모든 주제에 적용) · 결과 보내기 · 요약 복사 · 백업(고른 주제) ----------
+// 결과·백업 주제 = 주소의 주제(#/t/<주제>/log) → 마지막으로 연 주제 → 첫 주제
+let settingsTopic = null;
+async function syncAllTopics() {
+  for (const t of await getTopics()) { pulled.add(t.id); await runSync(t.id, "모든 주제"); }
+}
+function resultsBlock(topics, id, cfg) {
+  return `<div class="block-title">결과·백업</div>
+    <div class="list list-strong inset list-dividers"><ul>
+      <li class="item-content item-input"><div class="item-inner"><div class="item-title item-label">주제</div>
+        <div class="item-input-wrap input-dropdown-wrap"><select id="res-topic" aria-label="결과·백업 주제">${topics.map((t) => `<option value="${esc(t.id)}"${t.id === id ? " selected" : ""}>${esc(t.title)}</option>`).join("")}</select></div></div></li>
+      ${cfg ? `<li class="item-content"><div class="item-inner"><div class="item-title">이 주제 마지막 동기화</div><div class="item-after" id="topic-sync-status">${esc(lastSyncText(id))}</div></div></li>` : ""}
+    </ul></div>
     <div class="block grid grid-gap">
+      ${cfg ? `<button class="button button-fill button-large" id="btn-send">결과 보내기</button>
+        <p id="send-out" class="ll-muted hidden"></p>` : `<p class="ll-muted">GitHub 동기화를 연결하면 「결과 보내기」로 리뷰 세션에 결과를 넘겨요.</p>`}
       <button class="button button-tonal" id="btn-summary">결과 요약 보기·복사</button>
       <pre id="summary-out" class="ll-summary hidden"></pre>
       <button class="button button-outline" id="btn-export">백업 내보내기</button>
       <label class="button button-outline">백업 가져오기<input type="file" id="file-import" accept="application/json" class="hidden"></label>
     </div>`;
+}
+function bindResults(id, cfg) {
+  $("#res-topic").onchange = (e) => {
+    settingsTopic = e.target.value;
+    if (location.hash === "#/settings") route(true); else location.hash = "#/settings";
+  };
   if (cfg) {
     $("#btn-send").onclick = async () => {
       const out = $("#send-out");
       out.classList.remove("hidden");
       out.textContent = "보내는 중…";
       try {
+        const topic = await getTopic(id);
         await runSync(id, "결과 보내기");
         const path = await sendResult(id, feedbackSummary(topic, loadState(id)));
         out.textContent = `보냄: ${path} — 리뷰 세션에 「결과 보냈음」 이라고 말하면 읽습니다.`;
       } catch (e) { out.textContent = `보내지 못함: ${e.message}`; }
-      $("#sync-status").textContent = lastSyncText(id);
+      $("#topic-sync-status").textContent = lastSyncText(id);
     };
-    $("#btn-sync").onclick = async () => { $("#sync-status").textContent = "동기화 중…"; await runSync(id, "지금 동기화"); $("#sync-status").textContent = lastSyncText(id); };
   }
   $("#btn-summary").onclick = async () => {
-    const text = feedbackSummary(topic, loadState(id));
+    const text = feedbackSummary(await getTopic(id), loadState(id));
     const out = $("#summary-out");
     out.textContent = text;
     out.classList.remove("hidden");
@@ -624,15 +694,13 @@ async function viewLog(root, id) {
     } catch (err) { alert(err.message); }
   };
 }
-
-// ---------- 동기화 설정: 기기마다 한 번, 모든 주제에 적용 ----------
-async function syncAllTopics() {
-  for (const t of await getTopics()) { pulled.add(t.id); await runSync(t.id, "모든 주제"); }
-}
-async function viewSettings(root) {
-  setFrame("동기화 설정", null);
+async function viewSettings(root, topicId) {
+  setFrame({ title: "설정", tab: "settings" });
   const cfg = syncConfig();
-  const titles = new Map((await getTopics()).map((t) => [t.id, t.title]));
+  const topics = await getTopics();
+  const has = (x) => topics.some((t) => t.id === x);
+  const id = has(topicId) ? topicId : has(settingsTopic) ? settingsTopic : topics[0]?.id;
+  const titles = new Map(topics.map((t) => [t.id, t.title]));
   const logHtml = () => {
     const log = syncLog();
     return log.length
@@ -641,6 +709,8 @@ async function viewSettings(root) {
   };
   const lastAll = () => (syncLog()[0] ? syncLogLine(syncLog()[0], titles.get(syncLog()[0].topic)) : "아직 안 함");
   const note = `<div class="block"><details class="ll-hint"><summary>다시 넣어야 하는 때</summary><p>저장소와 토큰은 이 기기 브라우저에 한 번 저장되고 모든 주제에 적용돼요. 다른 기기·다른 브라우저, 홈 화면에 추가한 앱으로 열 때(브라우저와 저장 공간이 따로임), 브라우저 데이터를 지웠을 때, 토큰 만료일이 지났을 때 다시 넣어요.</p></details></div>`;
+  const results = id ? resultsBlock(topics, id, cfg) : "";
+  // 채움 버튼은 하나 — 연결됨이면 「결과 보내기」, 연결 전이면 「확인하고 저장」
   root.innerHTML = cfg
     ? `<div class="block-title block-title-medium">GitHub 동기화</div>
       <div class="block ll-sync-state">
@@ -649,13 +719,14 @@ async function viewSettings(root) {
         <p class="ll-muted">저장소: ${esc(cfg.repo)}</p>
       </div>
       <div class="block grid grid-gap">
-        <button class="button button-fill button-large" id="btn-sync-all">모든 주제 지금 동기화</button>
+        <button class="button button-tonal button-large" id="btn-sync-all">모든 주제 지금 동기화</button>
         <button class="button color-red" id="btn-sync-off">이 기기 연결 끊기</button>
       </div>
+      ${results}
       <div class="block-title">동기화 내역 <span class="ll-muted">이 기기 최근 ${SYNC_LOG_MAX}건</span></div>
       <div class="list list-strong inset list-dividers" id="sync-log">${logHtml()}</div>${note}`
     : `<div class="block-title block-title-medium">GitHub 동기화 설정</div>
-      <div class="block"><p class="ll-muted">비공개 저장소와 fine-grained 토큰(그 저장소 하나, Contents: Read and write)을 넣으면 진행 상태가 기기 사이에 이어지고 주제 「기록」 탭의 「결과 보내기」로 리뷰 세션에 결과를 넘깁니다.</p></div>
+      <div class="block"><p class="ll-muted">비공개 저장소와 fine-grained 토큰(그 저장소 하나, Contents: Read and write)을 넣으면 진행 상태가 기기 사이에 이어지고 이 화면의 「결과 보내기」로 리뷰 세션에 결과를 넘깁니다.</p></div>
       <div class="list list-strong inset"><ul>
         <li class="item-content item-input"><div class="item-inner"><div class="item-title item-label">저장소 (owner/이름)</div><div class="item-input-wrap"><input type="text" id="sync-repo" value="${esc(SYNC_DEFAULT_REPO)}" autocapitalize="off" autocorrect="off" spellcheck="false"></div></div></li>
         <li class="item-content item-input"><div class="item-inner"><div class="item-title item-label">토큰</div><div class="item-input-wrap"><input type="password" id="sync-token" placeholder="github_pat_…" autocomplete="off"></div></div></li>
@@ -663,9 +734,11 @@ async function viewSettings(root) {
       <div class="block grid grid-gap">
         <button class="button button-fill button-large" id="btn-sync-save">확인하고 저장</button>
         <p id="sync-err" class="ll-muted hidden"></p>
-      </div>${note}`;
+      </div>${note}
+      ${results}`;
+  if (id) bindResults(id, cfg);
   if (cfg) {
-    $("#btn-sync-all").onclick = async () => { $("#sync-status").textContent = "동기화 중…"; await syncAllTopics(); $("#sync-status").textContent = lastAll(); $("#sync-log").innerHTML = logHtml(); };
+    $("#btn-sync-all").onclick = async () => { $("#sync-status").textContent = "동기화 중…"; await syncAllTopics(); $("#sync-status").textContent = lastAll(); $("#sync-log").innerHTML = logHtml(); if (id) $("#topic-sync-status").textContent = lastSyncText(id); };
     $("#btn-sync-off").onclick = () => { if (confirm("이 기기에서 토큰을 지웁니다. 저장소의 기록은 그대로 남습니다.")) { saveSyncConfig(null); pulled.clear(); route(); } };
     return;
   }
@@ -685,10 +758,30 @@ async function viewSettings(root) {
   };
 }
 
+// ---------- 복습: 주제별 대기 수 → 주제 복습·테스트 화면(주제 칩 필터·합친 재점검은 다음 단계) ----------
+async function viewReviewHub(root) {
+  setFrame({ title: "복습", tab: "review" });
+  const rows = await Promise.all((await getTopics()).map(async (t) => {
+    try {
+      const p = topicProgress(await getTopic(t.id), loadState(t.id));
+      return `<li><a class="item-link item-content" href="#/t/${enc(t.id)}/review"><div class="item-inner">
+        <div class="item-title">${esc(t.title)}<div class="item-footer">재점검 ${p.due} · 새 문제 ${p.fresh}${p.nextDue && !p.due ? ` · 다음 재점검 ${fmtDate(p.nextDue)}` : ""}</div></div>
+        <div class="item-after">${p.due ? `<span class="ll-badge ll-badge-inline">${p.due}</span>` : ""}</div></div></a></li>`;
+    } catch (e) {
+      return `<li class="item-content"><div class="item-inner">${esc(t.title)} — 읽지 못함: ${esc(e.message)}</div></li>`;
+    }
+  }));
+  root.innerHTML = `<div class="block-title block-title-medium">복습·테스트</div>
+    <div class="list list-strong inset list-dividers ll-review-topics"><ul>${rows.join("")}</ul></div>
+    <div class="block"><p class="ll-muted">항목을 다 읽은 장은 문제로 테스트하고, 1·3·7·21·60·180일 뒤에 다시 점검합니다.</p></div>`;
+}
+
 // ---------- 주소 해석 ----------
 function parseRoute() {
   const parts = location.hash.replace(/^#\/?/, "").split("/").map(decodeURIComponent);
   if (parts[0] === "settings") return { view: "settings" };
+  if (parts[0] === "topics") return { view: "topics" };
+  if (parts[0] === "review") return { view: "reviewHub" };
   if (parts[0] !== "t" || !parts[1]) return { view: "home" };
   const topic = parts[1];
   if (parts[2] === "c" && parts[3]) return { view: "chapter", topic, chapter: parts[3] };
@@ -706,8 +799,9 @@ async function route(soft) {
   const root = $("#content");
   const keepTop = soft ? root.scrollTop : 0;
   if (soft) { root.classList.add("ll-fading"); await new Promise((ok) => setTimeout(ok, SOFT_FADE_MS)); }
-  openMenu(false);
+  closeTopicSheet();
   inSession = false;
+  if (r.topic) settingsTopic = r.topic;
   // 주제를 이 페이지에서 처음 열면 저장소 사본을 받아 합치고, 바뀌었으면 화면을 다시 그린다(회차 중이면 그리지 않음)
   if (r.topic && syncConfig() && !pulled.has(r.topic)) {
     pulled.add(r.topic);
@@ -716,14 +810,16 @@ async function route(soft) {
   }
   try {
     if (r.view === "home") await viewHome(root);
+    else if (r.view === "topics") await viewTopics(root);
+    else if (r.view === "reviewHub") await viewReviewHub(root);
     else if (r.view === "toc") await viewToc(root, r.topic);
     else if (r.view === "chapter") await viewChapter(root, r.topic, r.chapter);
     else if (r.view === "item") await viewItem(root, r.topic, r.item);
     else if (r.view === "done") await viewDone(root, r.topic, r.chapter);
     else if (r.view === "review") await viewReview(root, r.topic);
-    else if (r.view === "log") await viewLog(root, r.topic);
+    else if (r.view === "log") await viewSettings(root, r.topic);
     else if (r.view === "settings") await viewSettings(root);
-    await renderMenu(r);
+    updateReviewBadge().catch(() => {});
   } catch (e) {
     root.innerHTML = `<div class="block">불러오지 못했습니다: ${esc(e.message)}</div>`;
   }
@@ -732,7 +828,7 @@ async function route(soft) {
 // 당겨서 새로고침 — 스크롤이 문서가 아니라 #content 안에서 일어나 Safari 기본 동작이 걸리지 않는다.
 // 맨 위에서 당기면 본문이 손가락을 절반 속도로 따라오고, PTR_PULL 넘게 내려왔다 놓으면 지금 주제를 동기화한 뒤 화면만 다시 그린다.
 // 페이지를 다시 불러오지 않아 흰 화면이 없다. 사이트가 새로 배포됐으면(자산 ETag·Last-Modified 가 바뀜) 그때만 다시 불러온다.
-// 「새로고침 중…」 은 PTR_MIN_MS 이상 보여 깜빡이지 않게 한다. 테스트 회차 중·서랍 메뉴가 열렸을 때는 끈다.
+// 「새로고침 중…」 은 PTR_MIN_MS 이상 보여 깜빡이지 않게 한다. 테스트 회차 중·주제 바꾸기 시트가 열렸을 때는 끈다.
 const PTR_PULL = 50;
 const PTR_RESIST = 0.6;
 const PTR_HOLD = 44;
@@ -769,7 +865,7 @@ const loadedVersion = siteVersion();
   const reset = (animate) => { startY = null; armed = false; place(0, animate); };
   reset(false);
   el.addEventListener("touchstart", (e) => {
-    if (busy || inSession || el.scrollTop > 0 || $("#menu").classList.contains("panel-in") || e.touches.length !== 1) return;
+    if (busy || inSession || el.scrollTop > 0 || $("#topic-sheet").classList.contains("ll-sheet-in") || e.touches.length !== 1) return;
     startY = e.touches[0].clientY;
   }, { passive: true });
   el.addEventListener("touchmove", (e) => {
