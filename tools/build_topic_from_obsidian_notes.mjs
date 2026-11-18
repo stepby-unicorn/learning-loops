@@ -5,7 +5,7 @@
 // 쓰는 법:
 //   node tools/build_topic_from_obsidian_notes.mjs <입구 노트.md> [--slug account-auth] [--key AUT]
 //        [--title 제목] [--summary 한 줄] [--exclude "절 이름,절 이름"] [--rename "옛 절=보일 제목,…"]
-//        [--replace "옛 말=보일 말,…"] [--deny-file 금지어.txt] [--out topics] [--dry-run]
+//        [--replace "옛 말=보일 말,…"] [--deny-file 금지어.txt] [--allow-example-ip 1] [--out topics] [--dry-run]
 //
 // 읽는 규칙(학습 노트 스킬 「항목 단위」):
 //   - 입구 노트 앞머리 learning_key·learning_slug(없으면 --key·--slug), pages_exclude(빼고 올릴 장 절 이름 목록),
@@ -186,6 +186,10 @@ export function findDenied(text, words) {
 
 // 공개 사이트에 올리면 안 되는 값의 꼴. 회사 맥락 문장은 막지 않고 값만 막는다.
 const DOC_IP = /^(127\.|0\.0\.0\.0$|192\.0\.2\.|198\.51\.100\.|203\.0\.113\.)/; // loopback·문서용 예시 대역
+// 입구 노트 pages_allow_example_ip: true 인 주제(네트워크 교재)만 — 사설(RFC 1918)·CGNAT·link-local·IETF 예약·벤치마크·멀티캐스트·예약 대역,
+// 넷마스크, 공용 DNS resolver, Azure 고정 주소 168.63.129.16. URL 은 예시 호스트(한 단어 placeholder·*.example.internal·host.docker.internal)도 통과
+const EXAMPLE_IP = /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.|192\.0\.0\.|198\.1[89]\.|2(2[4-9]|3\d|4\d|5[0-5])\.|8\.8\.8\.8$|8\.8\.4\.4$|1\.1\.1\.1$|1\.0\.0\.1$|168\.63\.129\.16$)/;
+const EXAMPLE_HOST = /^(app|api|svc|alb|backend|host|proxy|web|db|sample-app)$|\.example\.internal$|^host\.docker\.internal$/;
 const INTERNAL_HOST = /(^|\.)(internal|local|corp|intra|lan)$|^(10|192\.168|172\.(1[6-9]|2\d|3[01]))\./;
 // 공개 명세에 실린 예시 값 — OpenID Connect Core 1.0 의 ID token 예시 `sub`
 const PUBLIC_EXAMPLE_VALUES = new Set(["248289761001"]);
@@ -195,14 +199,14 @@ export const SECRET_PATTERNS = [
   ["토큰", /\b(?:ghp|gho|ghs|github_pat|glpat|xox[abps])[-_][A-Za-z0-9_-]{16,}|\bsk-[A-Za-z0-9_-]{20,}/g],
   ["AWS 계정 번호", /(?<![\d.\-:])\d{12}(?![\d.\-:])/g],
   // `§3.1.1.2`·`V3.1.1.2`·`#section-6.1.3.2` 같은 명세 절 번호는 IP 가 아니다
-  ["IP", /(?<![\d.§A-Za-z-])(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)(?![\d.])/g, (m) => !DOC_IP.test(m)],
-  ["내부 URL", /https?:\/\/([A-Za-z0-9.-]+)/g, (m, host) => host !== "localhost" && (!host.includes(".") || INTERNAL_HOST.test(host.toLowerCase()))],
+  ["IP", /(?<![\d.§A-Za-z-])(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)(?![\d.])/g, (m, _h, o) => !DOC_IP.test(m) && !(o.exampleIp && EXAMPLE_IP.test(m))],
+  ["내부 URL", /https?:\/\/([A-Za-z0-9.-]+)/g, (m, host, o) => host !== "localhost" && !(o.exampleIp && (EXAMPLE_HOST.test(host.toLowerCase()) || EXAMPLE_IP.test(host))) && (!host.includes(".") || INTERNAL_HOST.test(host.toLowerCase()))],
 ];
 
-export function findSecrets(text) {
+export function findSecrets(text, opts = {}) {
   const hits = [];
   for (const [kind, re, keep] of SECRET_PATTERNS) {
-    for (const m of text.matchAll(re)) if (!PUBLIC_EXAMPLE_VALUES.has(m[0]) && (!keep || keep(m[0], m[1]))) hits.push(`${kind} ${m[0]}`);
+    for (const m of text.matchAll(re)) if (!PUBLIC_EXAMPLE_VALUES.has(m[0]) && (!keep || keep(m[0], m[1], opts))) hits.push(`${kind} ${m[0]}`);
   }
   return hits;
 }
@@ -267,10 +271,11 @@ function main() {
   const outDir = path.join(args.out || "topics", slug);
   const outputs = [[path.join(outDir, "index.json"), JSON.stringify(index, null, 1)], ...bodies.map((b) => [path.join(outDir, `${b.id}.json`), JSON.stringify(b)])];
   const denied = [...readDeny(args["deny-file"]), ...Object.keys(replace)];
+  const exampleIp = String(fm.pages_allow_example_ip) === "true" || Boolean(args["allow-example-ip"]);
   const hits = [];
   for (const [file, text] of outputs) {
     for (const w of findDenied(text, denied)) hits.push(`${path.basename(file)}: 금지어 ${w}`);
-    for (const s of findSecrets(text)) hits.push(`${path.basename(file)}: ${s}`);
+    for (const s of findSecrets(text, { exampleIp })) hits.push(`${path.basename(file)}: ${s}`);
   }
 
   const report = {

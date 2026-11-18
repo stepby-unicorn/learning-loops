@@ -19,6 +19,15 @@
       "cards": 379
     },
     {
+      "id": "network-aws",
+      "key": "NET",
+      "title": "네트워크·AWS 학습",
+      "summary": "",
+      "chapters": 35,
+      "items": 280,
+      "cards": 260
+    },
+    {
       "id": "account-auth-security",
       "key": "SEC",
       "title": "계정·인증 보안",

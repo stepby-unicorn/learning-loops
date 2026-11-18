@@ -5,6 +5,15 @@ import { parseToc, parseQuestions, buildChapter, findDenied, findSecrets, dropVa
 let n = 0;
 const t = (name, fn) => { fn(); n++; console.log(`ok ${n} ${name}`); };
 
+t("예시 IP 허용은 pages_allow_example_ip 주제만 — 사설·link-local·넷마스크·공용 resolver", () => {
+  const s = "10.0.1.10 172.16.0.0 192.168.0.0 169.254.169.254 255.255.255.192 8.8.8.8 100.64.0.1";
+  assert.equal(findSecrets(s).length, 7);
+  assert.deepEqual(findSecrets(s, { exampleIp: true }), []);
+  assert.deepEqual(findSecrets("52.95.110.1 172.32.0.1", { exampleIp: true }), ["IP 52.95.110.1", "IP 172.32.0.1"]);
+  assert.deepEqual(findSecrets("224.0.0.5 240.0.0.0 198.18.0.0 168.63.129.16 http://app http://10.0.12.34 http://a.example.internal", { exampleIp: true }), []);
+  assert.deepEqual(findSecrets("http://billing-prod http://x.corp", { exampleIp: true }).map((h) => h.split(" ").pop()), ["http://billing-prod", "http://x.corp"]);
+});
+
 t("목차 줄 순서 = 장 순서, ### = 부", () => {
   const toc = parseToc("## 목차\n설명\n### 1부 기초\n- [[AUT01 용어|AUT01]] 용어\n- [[AUT41 비교|AUT41]] 비교\n### 2부 심화\n- [[AUT02 수준]] 수준\n## 주요 결정\n- [[AUT03 x]]", "AUT");
   assert.deepEqual(toc.map((c) => [c.id, c.part]), [["AUT01", "1부 기초"], ["AUT41", "1부 기초"], ["AUT02", "2부 심화"]]);
