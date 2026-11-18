@@ -1,0 +1,1647 @@
+{
+ "id": "account-auth-security",
+ "key": "SEC",
+ "title": "계정·인증 보안",
+ "summary": "로그인 뒤 특권 계정의 탈취·남용 방어 — MFA·session 바인딩·JIT·ReadQuota·반출 통제·이상 탐지·감사 로그·법규를 장마다 읽고 테스트",
+ "chapters": [
+  {
+   "id": "SEC01",
+   "title": "SEC01 특권 계정 탈취·남용 위협 모델과 사건 분석",
+   "part": "1부 공격과 사례",
+   "summary": "특권 계정이 뚫리거나 남용될 때 공격이 어떤 사슬(정찰 → 자격 증명 → 진입 → 특권 → 열람 → 반출 → 흔적 지우기)로 진행되는지, 공개된 사후 보고서 8건과 2026-11 금융보안원 사건을 이 사슬과 대조 표 E1~E16 에 겹쳐 본다. 결론은 사건 대부분이 \"유효한 자격 증명(T1078) + 넓은 상시 읽기 권한 + 로그인 뒤 감시 없음\" 의 조합이고, 사슬의 한 고리만 막는 통제로는 부족하므로 SEC02~SEC11 의 통제를 사슬 단계마다 하나 이상 두어야 한다는 것이다. account-auth-kit 0.2 에는 이 장의 위협 → 통제 → kit 기능 매핑 표를 시험 목록의 뿌리로 넣고, 정할 것은 없다.",
+   "items": [
+    {
+     "id": "SEC01#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "SEC01#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "SEC01#원리",
+     "title": "원리"
+    },
+    {
+     "id": "SEC01#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "SEC01#사례 분석",
+     "title": "사례 분석"
+    },
+    {
+     "id": "SEC01#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "SEC01#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "SEC01#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "SEC01#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "SEC01#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "SEC01#account-auth-kit 0.2 입력",
+     "title": "account-auth-kit 0.2 입력"
+    },
+    {
+     "id": "SEC01#다른 장 연결",
+     "title": "다른 장 연결"
+    },
+    {
+     "id": "SEC01#더 깊이",
+     "title": "더 깊이"
+    }
+   ],
+   "cards": [
+    {
+     "id": "SEC01-Q01",
+     "q": "T1078 Valid Accounts 가 ATT&CK 에서 네 tactic 에 동시에 걸린다는 것은 방어에 무엇을 뜻하나?",
+     "a": "로그인 순간 한 번만 검사해서는 안 되고, 진입 뒤 단계마다 다시 봐야 한다.",
+     "why": "정상 계정은 진입(Initial Access)·지속(Persistence)·권한 상승(Privilege Escalation)·은폐(Stealth)에 모두 쓰인다. 그래서 특권 활성·열람 양·반출·행동 같은 진입 뒤 고리마다 통제가 있어야 \"정상 로그인\" 으로 보이는 공격을 끊을 수 있다.",
+     "hint": "원리 「공격 사슬 — 이 장이 쓰는 일곱 단계」, MITRE ATT&CK T1078 페이지(v20.1)."
+    },
+    {
+     "id": "SEC01-Q02",
+     "q": "사슬에서 K3(특권)를 건너뛰는 사건은 어떤 모양이고, 그때 K3 통제는 왜 소용이 없나?",
+     "a": "처음 훔친 계정이 이미 넓은 상시 권한을 가진 경우이고, 권한 상승 단계가 없으니 승인형 JIT 를 거칠 일이 없다.",
+     "why": "Twitter 지원 도구, Capital One WAF role 처럼 첫 계정이 곧 특권이면 사슬이 K2 → K4 로 바로 간다. 상시 권한을 없애 JIT 로 바꿔야(SEC04·SEC05) K3 가 사슬에 다시 들어간다.",
+     "hint": "원리 「공격 사슬 — 이 장이 쓰는 일곱 단계」 아래 점선 K2 → K4 설명, 사례 분석 「사례에서 뽑은 공통 패턴」 2."
+    },
+    {
+     "id": "SEC01-Q03",
+     "q": "사례 8건에서 E14(사람 아닌 계정·외주)가 중요한 이유를 사례 이름으로 설명하면?",
+     "a": "Okta 2023 service account, Uber 2022 외부 계약직 계정, Midnight Blizzard 2024 test OAuth 앱, Capital One 2019 WAF role — 사람 계정만 보는 특권 목록은 이 넷을 놓친다.",
+     "why": "사례 × E 행렬에서 E14 가 ● 인 사례가 4건으로 절반이다. 비사람 주체는 사람 계정 목록·검토에 안 나와 위협 모델에서 빠지기 쉽다.",
+     "hint": "사례 분석 「사례 × E 행렬」 E14 열, 원리 「왜 특권 계정 탈취·남용이 따로 다룰 주제인가」 4."
+    },
+    {
+     "id": "SEC01-Q04",
+     "q": "같은 \"IP 회전\" 이 Midnight Blizzard 와 금융보안원 사건에서 사슬의 다른 위치에 있다. 각각 무엇으로 대응하나?",
+     "a": "Midnight Blizzard 는 로그인 앞(spraying 숨김) → 계정 key rate limit·유출 대조·MFA, 금융보안원은 로그인 뒤(열람 위장) → 계정·session 단위 양 한도와 \"계정당 IP 수\" 탐지 신호.",
+     "why": "같은 E5 라도 로그인 앞이면 인증 시도를 묶는 key 를 IP 가 아닌 계정으로 잡아야 하고, 로그인 뒤면 열람 양·행동을 봐야 한다(SEC06·SEC08). residential proxy 는 정상 IP 라 IP 차단 목록으로는 둘 다 못 막는다.",
+     "hint": "사례 분석 「Microsoft Midnight Blizzard 2024」 의 \"이 장이 더하는 관점\" ③, 「위협과 흔한 실수」 의 IP 회전 행."
+    },
+    {
+     "id": "SEC01-Q05",
+     "q": "STRIDE 가 대량 열람 위협에 약한 이유는?",
+     "a": "권한 위반만 묻고 권한 안에서 얼마나 많이·빨리 보는지는 묻지 않기 때문이다.",
+     "choices": [
+      "DFD 가 커지면 빠뜨리는 요소가 많아진다",
+      "권한 안에서의 양·속도를 묻지 않는다",
+      "사회공학 공격만 따로 다룬다",
+      "사후 분석용이라 설계에 못 쓴다"
+     ],
+     "answerIndex": 1,
+     "why": "STRIDE 의 여섯 갈래는 위장·변조·부인·노출·서비스 거부·권한 상승 같은 권한 위반 중심이라, 권한이 있는 사람의 대량 열람(E6)은 위협으로 잡히지 않기 쉽다. 그래서 attack tree(1,000건 반출 같은 양 목표)나 위험 평가의 영향 계산을 같이 쓴다.",
+     "hint": "방법들 「방법 5 — STRIDE (특권 계정 판)」 의 단점, 「방법 7 — attack tree (특권 열람 목표)」."
+    },
+    {
+     "id": "SEC01-Q06",
+     "q": "Okta 2023 과 LastPass 2022 의 공통점인 \"사건 사이를 잇는 사슬\" 은 무엇인가?",
+     "a": "열람된 데이터 안에 다음 공격의 열쇠가 있었다.",
+     "why": "Okta 는 HAR 파일 안의 session token 으로 고객 tenant 에 들어갔고, LastPass 는 사건 1 에서 가져간 문서로 사건 2 의 표적을 골랐다. 그래서 반출 데이터 안의 자격 증명 제거(SEC07)와 감사·보안 데이터 열람 감사가 필요하다.",
+     "hint": "사례 분석 「사례에서 뽑은 공통 패턴」 5, 「Okta 2023 고객 지원 시스템」·「LastPass 2022」."
+    },
+    {
+     "id": "SEC01-Q07",
+     "q": "사후 보고서 행렬에서 E13·E15·E16 열이 거의 비어 있는 것을 \"그 위협은 드물다\" 로 읽으면 안 되는 이유는?",
+     "a": "공개 보고서가 다루지 않는 것이지 위협이 없는 것이 아니다(선택 편향).",
+     "why": "사후 보고서는 침입 경로 중심이라 열람 기록(E13)·내부자 공모(E15)·로그 변조(E16)를 잘 적지 않는다. 그래서 SEC09·SEC10·SEC11 은 사례 대신 표준·법규에서 근거를 찾는다.",
+     "hint": "사례 분석 「사례 × E 행렬」 아래 읽는 법, 「위협과 흔한 실수」 마지막 행."
+    },
+    {
+     "id": "SEC01-Q08",
+     "q": "이 장이 0.2 에 넣자는 \"register 와 README 일치 시험\" 은 어떤 실수를 막나?",
+     "a": "명시 한계(L1~L6)라고 대조 표·설계에 적었는데 README Known limitations 에는 없는 상태를 막는다.",
+     "why": "대조 표 검수에서 실제로 고친 실수다. register 의 status=limit 통제마다 README 에 같은 문장이 있는지, status=implemented 통제마다 시험이 있는지 확인해 통제 목록과 시험·문서의 연결이 끊기지 않게 한다.",
+     "hint": "account-auth-kit 0.2 입력 「0.2 에 넣을 것 (이 장 몫)」 2, 「명시 한계로 두는 것 (이 장 결론)」."
+    },
+    {
+     "id": "SEC01-Q09",
+     "q": "대조 표의 빈 곳 G1~G10 은 공격 사슬의 어느 부분에 몰려 있고, 그것이 이 프로젝트 장 순서에 무엇을 뜻하나?",
+     "a": "진입 뒤(특권 → 열람 → 반출 → 탐지)에 몰려 있고, 그래서 장 순서가 K1 → K6 로 사슬 뒷부분까지 따라간다.",
+     "choices": [
+      "정찰·자격 증명 단계(K0·K1)",
+      "진입 뒤 특권·열람·반출·탐지 단계",
+      "흔적 지우기 단계(K6)만",
+      "사슬 전체에 고르게"
+     ],
+     "answerIndex": 1,
+     "why": "G1~G10 중 K0·K1 에 속한 것은 G6·G9 둘뿐이다. 앞선 학습과 0.1.x 코드가 \"문 앞\" 을 이미 촘촘히 다뤘으므로 남은 일은 로그인 뒤 통제(SEC04~SEC09)다.",
+     "hint": "원리 「G1~G10 을 사슬에 놓기」 표와 그 아래 관찰."
+    },
+    {
+     "id": "SEC01-Q10",
+     "q": "이 프로젝트에서 모듈 설계 리뷰와 사건 분석에는 각각 어떤 방법 조합을 쓰나?",
+     "a": "설계 리뷰는 STRIDE + attack tree, 사건 분석은 ATT&CK 매핑 + 일곱 단계 사슬이다.",
+     "choices": [
+      "설계 리뷰 Diamond Model, 사건 분석 STRIDE",
+      "설계 리뷰 STRIDE + attack tree, 사건 분석 ATT&CK + 사슬",
+      "설계 리뷰 SP 800-30, 사건 분석 LINDDUN",
+      "설계 리뷰 kill chain, 사건 분석 attack tree"
+     ],
+     "answerIndex": 1,
+     "why": "kit 은 모듈이라 DFD 가 작아 STRIDE 가 싸고, attack tree 잎이 곧 abuse case 시험이 되어 0.2 시험 목록으로 이어진다. 공개 사후 보고서들이 ATT&CK 어휘를 쓰므로 사례 대조는 ATT&CK 에 맞춰야 비교가 된다. 마지막에 API Top 10·OAT 체크리스트로 빠진 범주를 본다.",
+     "hint": "방법들 「방법 비교표 — 위협 관점」 아래 \"account-auth-kit·이 프로젝트라면\"."
+    }
+   ]
+  },
+  {
+   "id": "SEC02",
+   "title": "SEC02 phishing-resistant MFA 강제와 복구 경로",
+   "part": "2부 들어오는 쪽 강화",
+   "summary": "특권 계정에 phishing-resistant MFA(WebAuthn·passkey·스마트카드)를 \"제공\" 하는 것과 \"강제\" 하는 것은 다르고, 강제해도 약한 등록·복구·대체 로그인 경로가 하나 남으면 공격자는 그쪽으로 내려간다(downgrade). 결론: 특권 역할은 ① 판정 때 amr 로 강제(지금 kit) + ② 그 역할을 쥔 계정의 첫 passkey 등록·복구를 약한 요소만으로 끝내지 못하게(대기 시간·2인 승인) + ③ customer passkey step-up 에도 UV 를 요구하는 것이 0.2 의 핵심이다(② 의 최소안 — 0.1.2 에서 staff SSO·customer OIDC session 으로 등록한 passkey 를 특권 근거로 쓰지 않게 — 은 0.1.3 에서 고침(내부 결정) — v0.1.2 이하는 열림). 정할 것 없음.",
+   "items": [
+    {
+     "id": "SEC02#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "SEC02#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "SEC02#원리",
+     "title": "원리"
+    },
+    {
+     "id": "SEC02#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "SEC02#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "SEC02#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "SEC02#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "SEC02#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "SEC02#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "SEC02#account-auth-kit 0.2 입력",
+     "title": "account-auth-kit 0.2 입력"
+    },
+    {
+     "id": "SEC02#다른 장 연결",
+     "title": "다른 장 연결"
+    }
+   ],
+   "cards": [
+    {
+     "id": "SEC02-Q01",
+     "q": "number matching 을 켠 push MFA 는 AitM 피싱을 막는가?",
+     "a": "막지 못한다 — number matching 은 MFA fatigue 대책이지 phishing resistance 가 아니다.",
+     "choices": [
+      "막는다 — 숫자가 공격자 화면에 안 나온다",
+      "막지 못한다 — 숫자를 그대로 중계할 수 있다",
+      "막는다 — push 는 origin 에 묶인다",
+      "막지 못한다 — 숫자가 너무 짧아 추측된다"
+     ],
+     "answerIndex": 1,
+     "why": "number matching 은 \"이 요청이 지금 내 로그인인가\" 를 확인할 뿐이고, AitM proxy 는 진짜 로그인 화면의 숫자를 그대로 사용자에게 보여 준다. phishing resistance 는 인증 출력이 verifier 이름(origin)이나 channel 에 묶여야 생긴다(63B-4 §3.2.5).",
+     "hint": "원리 「AitM 이 TOTP·push 를 넘고 WebAuthn 에서 멈추는 이유」, NIST SP 800-63B-4 §3.2.5.1·§3.2.5.2."
+    },
+    {
+     "id": "SEC02-Q02",
+     "q": "kit 의 판정 강제(A3)에서 AitM 이 password+TOTP session 을 얻으면 무엇을 할 수 있나?",
+     "a": "목록에 없는 역할은 그대로 쓰고, 그 session 으로 공격자 passkey 를 등록할 수 있으면 강제 자체가 넘어간다.",
+     "why": "목록 역할만 허락하는 작업은 403 phishing_resistant_required 이고 passkey step-up 은 피해자 passkey 가 없어 실패한다. 그러나 약한 session 에서 첫 passkey 를 등록하는 길(D2)이 열려 있으면 그 뒤 session 은 hwk 가 된다 — v0.1.2 이하는 열려 있고 0.1.3 에서 최소안으로 고쳤으며, 0.2 의 bind_delay 가 대기 시간으로 닫는다.",
+     "hint": "방법들 「A3 판정 강제(역할을 쓸 때 session amr 검사) — 지금 kit」, 원리 「downgrade 는 네 갈래」 D2, 직접 구현 「흐름 — 약한 session 에서 첫 passkey 등록(D2 대책)」."
+    },
+    {
+     "id": "SEC02-Q03",
+     "q": "63B-4 를 지키면 password+TOTP session 에서 passkey 를 등록하는 것은 금지인가?",
+     "a": "아니다 — 표준상 허용되므로 등록 downgrade 는 서비스가 따로 막아야 한다.",
+     "why": "§4.1.2.1 은 binding 전 인증을 \"계정의 최대 AAL\" 과 \"새 authenticator 를 쓸 AAL\" 중 낮은 쪽으로 요구한다. password+TOTP 도 passkey 도 AAL2 라 허용되고, phishing resistance 는 AAL 축이 아니라 이 규칙에 걸리지 않는다.",
+     "hint": "원리 「복구가 왜 가장 약한 고리인가 — 63B-4 §4.2 의 틀」 의 \"표준의 빈칸\", NIST SP 800-63B-4 §4.1.2.1."
+    },
+    {
+     "id": "SEC02-Q04",
+     "q": "customer passkey step-up 에 UV 가 없으면 왜 aal=2 가 과장인가?",
+     "a": "UV 없는 passkey 는 \"소지\" 한 요소라서 step-up 순간에는 single-factor 이기 때문이다.",
+     "why": "63B-4 부록 B 는 verifier 가 UV flag 를 SHALL 검사하고 UV 가 없으면 single-factor 로 다루라고 한다. 로그인 2단계는 비밀번호 + 소지라 2요소지만, step-up 은 그 순간 passkey 하나만 확인하므로 잠금 해제된 기기를 잠깐 쥔 사람도 통과한다.",
+     "hint": "원리 「synced passkey 와 device-bound — 무엇이 달라지나」 의 신호 줄, NIST SP 800-63B-4 부록 B, 「account-auth-kit 0.2 입력」 P8."
+    },
+    {
+     "id": "SEC02-Q05",
+     "q": "synced passkey 를 관리자에게 허용해도 되나?",
+     "a": "AAL2 라면 허용할 수 있지만 AAL3 에는 안 되고, 내부 운영자에겐 device-bound(BE=0)를 요구하거나 provider 계정도 phishing-resistant 로 보호하게 한다.",
+     "why": "63B-4 부록 B 는 잘 구성된 syncable authenticator 를 AAL2 phishing-resistant 로 인정하지만, 키가 export 가능해 §2.3.2 가 AAL3 사용을 금지한다. 남는 위험은 provider 계정 복구가 우리 복구 경로와 무관한 옆문이 된다는 것이다.",
+     "hint": "원리 「synced passkey 와 device-bound — 무엇이 달라지나」, 방법들 「C2 BE flag 로 device-bound 만」·「B7 provider 복구에 맡김(synced passkey)」, NIST SP 800-63B-4 §2.3.2·§3.2.13·부록 B."
+    },
+    {
+     "id": "SEC02-Q06",
+     "q": "help desk MFA 초기화를 2인 승인으로 바꾸면 Okta 2023 같은 사건이 끝나나?",
+     "a": "줄어들 뿐 끝나지 않는다.",
+     "why": "같은 대본으로 두 사람을 속이거나 내부자가 공모할 수 있다. 그래서 초기화 뒤 새 요소 대기 시간(B6)·독립 채널 알림·초기화 이벤트 탐지·help desk 역할이 고특권 그룹을 관리하지 못하게 하는 겹을 같이 둔다.",
+     "hint": "원리 「사례에서 본 순서 — help desk 가 정문이 되기까지」, 방법들 「B4 2인 승인 초기화(maker-checker)」·「B6 새 요소 등록 뒤 대기(cool-down) + 독립 채널 알림」."
+    },
+    {
+     "id": "SEC02-Q07",
+     "q": "Entra authentication strength 와 kit phishing_resistant_for_roles 의 공통점과 차이는?",
+     "a": "둘 다 첫 인증은 막지 않고 자원·역할을 쓸 때 강도를 보는 판정 강제(A3)이고, Entra 는 정책 조건·authenticator 제한이 넓은 대신 라이선스가 필요하며 kit 은 역할 단위로 시작 때 고정된다.",
+     "why": "Entra 는 Conditional Access 정책으로 앱·작업·위험 조건별로 고르고 AAGUID·CBA issuer 제한까지 하지만 P1 라이선스가 필요하다. kit 은 설정이 시작 때 고정되어(관리 콘솔에서 끌 수 없음) 판정 엔진 안에서 grant 를 뺀다. 공통 약점은 AitM 이 훔친 password+TOTP session 으로 나머지 역할을 쓴다는 것이다.",
+     "hint": "원리 「강제를 \"어디서\" 하나 — 세 지점」, 방법들 「A3 판정 강제(역할을 쓸 때 session amr 검사) — 지금 kit」, Microsoft Entra authentication strengths 문서 Limitations."
+    },
+    {
+     "id": "SEC02-Q08",
+     "q": "복구 code 로 로그인한 특권 계정 session 은 어떻게 다뤄야 하나?",
+     "a": "특권을 주지 않고, 새 passkey 등록 정도로 할 일을 좁히며, 그 passkey 도 대기 시간 뒤에 특권 근거로 쓴다.",
+     "why": "복구 code 는 phishing-resistant 가 아니다(AitM 이 중계 가능). 복구는 곧 새 등록이므로 D2·D3 와 같은 대기·알림이 필요하다. kit 은 code 의 amr 이 otp 라 특권이 자동으로 빠진다.",
+     "hint": "방법들 「B2 saved recovery code(오프라인 보관)」·「B6 새 요소 등록 뒤 대기(cool-down) + 독립 채널 알림」, 원리 「downgrade 는 네 갈래」 D3."
+    },
+    {
+     "id": "SEC02-Q09",
+     "q": "관리자가 passkey 를 등록해 두었는데도 피싱 페이지가 \"passkey 를 쓸 수 없음\" 을 보여 TOTP 를 고르게 했다. 네 갈래 downgrade 중 어느 것이고, 무엇이 막나?",
+     "a": "D1 로그인 downgrade — 특권 계정의 대체 방법을 없애거나, 대체 방법으로 만든 session 에 특권을 주지 않아야 막힌다.",
+     "choices": [
+      "D1 로그인 downgrade",
+      "D2 등록 downgrade(bootstrap)",
+      "D3 복구 downgrade",
+      "D4 step-up downgrade"
+     ],
+     "answerIndex": 0,
+     "why": "강한 요소가 하나 있어도 계정의 실제 강도는 열려 있는 가장 약한 경로다. 사용자를 대체 2FA 로 모는 것은 로그인 경로의 downgrade 이고, passkey 등록(D2)·help desk 초기화(D3)·민감 작업 재인증(D4)과는 막는 지점이 다르다.",
+     "hint": "원리 「downgrade 는 네 갈래」 표, Ulqinaku 외(USENIX Security 2021)."
+    },
+    {
+     "id": "SEC02-Q10",
+     "q": "특권 계정에 대해 AitM 이 그 계정의 어떤 session 도 만들지 못하게 하려면 세 강제 지점 중 어디를 골라야 하고, 대가는 무엇인가?",
+     "a": "로그인 강제(A2) — 대가는 passkey 를 잃은 관리자가 로그인 자체를 못 해 help desk 복구 압력(D3 위험)이 커진다는 것이다.",
+     "choices": [
+      "제공만(A1)",
+      "로그인 강제(A2)",
+      "판정 강제(A3)",
+      "step-up 강제(A4)"
+     ],
+     "answerIndex": 1,
+     "why": "판정 강제(A3)는 password+TOTP session 이 생겨 특권 외 역할이 노출되고, step-up 강제(A4)는 작업 단위라 평소 session 은 약하다. 로그인 강제만 특권 보유자에게 passkey 로만 full session 을 준다. 그래서 kit 0.2 는 login 을 선택지로 두고 기본은 판정 강제로 둔다.",
+     "hint": "원리 「강제를 \"어디서\" 하나 — 세 지점」, 방법들 「A2 로그인 강제(특권 보유자는 passkey 로만 full session)」, 「방법 비교표 — 위협 관점(강제 지점)」."
+    }
+   ]
+  },
+  {
+   "id": "SEC03",
+   "title": "SEC03 session 위치·기기 바인딩 — DPoP·DBSC·mTLS·IP 고정",
+   "part": "2부 들어오는 쪽 강화",
+   "summary": "훔친 session cookie·token 을 다른 곳에서 다시 쓰는 공격(E12)을 막는 방법 — IP·prefix·ASN·국가로 묶기, 기기 키로 묶기(DBSC·DPoP·mTLS·플랫폼 token 보호), 앞단 ZTNA 의 기기 판정, session 중 재평가(CAE) — 의 원리·한계·비교를 다룬다. 결론: 위치 고정은 \"같은 망 안 공격자\" 와 \"같은 ASN 의 residential proxy\" 를 못 막는 신호이고, 실제로 재사용을 막는 것은 기기 키 바인딩(브라우저 cookie 는 DBSC)이다. account-auth-kit 0.2 는 이미 기록 중인 ip_prefix·ua_hash 를 request 마다 비교하는 재평가 hook + 정책(기록·재인증·폐기) 을 넣고, DBSC endpoint 는 0.3 후보, 망·기기 신뢰 판정(L3·G8)은 앞단 몫으로 명시 한계에 둔다.",
+   "items": [
+    {
+     "id": "SEC03#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "SEC03#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "SEC03#원리",
+     "title": "원리"
+    },
+    {
+     "id": "SEC03#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "SEC03#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "SEC03#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "SEC03#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "SEC03#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "SEC03#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "SEC03#account-auth-kit 0.2 입력",
+     "title": "account-auth-kit 0.2 입력"
+    },
+    {
+     "id": "SEC03#다른 장 연결",
+     "title": "다른 장 연결"
+    },
+    {
+     "id": "SEC03#더 깊이",
+     "title": "더 깊이"
+    }
+   ],
+   "cards": [
+    {
+     "id": "SEC03-Q01",
+     "q": "OWASP 는 IP·UA 바인딩을 권하면서 왜 \"신뢰할 방어로 쓰지 말라\" 고 하나?",
+     "a": "같은 IP 를 가진 공격자와 복사한 UA 는 통과하므로, IP·UA 는 탈취 징후일 뿐 막는 장치가 아니다.",
+     "why": "같은 NAT·Wi-Fi·회사 proxy 뒤의 공격자는 피해자와 같은 IP 를 갖고, UA 는 그대로 복사할 수 있다. 그래서 바뀌면 탈취 징후로 쓰되, 안 바뀌었다고 안전하다고 볼 수 없다.",
+     "hint": "원리 「바인딩의 세 층」, 방법들 「A1 정확한 IP 고정」·「B1 User-Agent hash 고정」, OWASP Session Management Cheat Sheet."
+    },
+    {
+     "id": "SEC03-Q02",
+     "q": "Okta 가 관리자 콘솔 기본값으로 IP 가 아니라 ASN 바인딩을 고른 이유를 오탐·미탐으로 설명하라.",
+     "a": "ASN 은 IP 보다 오탐이 작으면서 흔한 재사용 위치(해외·클라우드 VM)는 잡는다 — 대가는 같은 ASN residential proxy 미탐.",
+     "choices": [
+      "IP 는 위조가 쉽고 ASN 은 위조가 불가능해서",
+      "ASN 은 오탐이 작고 해외·클라우드 재사용은 잡아서",
+      "ASN 은 같은 통신사 proxy 공격까지 막아서",
+      "IP 는 개인정보라 저장할 수 없어서"
+     ],
+     "answerIndex": 1,
+     "why": "IP 는 모바일 셀 이동·IPv6 임시 주소로 정상 사용자도 자주 바뀌어 오탐이 크다. ASN 은 같은 통신사 안 이동을 흡수하고, 해외·클라우드 VM 은 다른 ASN 이라 잡힌다. 공격자가 피해자와 같은 통신사 IP 를 사면 통과한다.",
+     "hint": "방법들 「A1 정확한 IP 고정」·「A3 ASN 고정」, 「방법 비교표」, Okta Protecting Administrative Sessions."
+    },
+    {
+     "id": "SEC03-Q03",
+     "q": "DBSC 가 있는데도 infostealer 가 훔친 cookie 가 잠깐은 통하는 이유와 그 시간을 정하는 값은?",
+     "a": "DBSC 는 갱신에만 키를 요구하므로 bound cookie 수명(예 10분) 동안은 훔친 cookie 가 통한다 — 그 수명이 노출 창이다.",
+     "why": "bound cookie 자체는 여전히 bearer 다. 기기 키 서명은 짧은 cookie 를 다시 받는 refresh 때만 요구되고, 키는 기기 밖으로 꺼낼 수 없어 수명이 끝나면 공격자는 갱신하지 못한다.",
+     "hint": "방법들 「D1 DBSC(Device Bound Session Credentials) — 브라우저 cookie 를 기기 키에 묶기」, 직접 구현 「흐름 — DBSC 등록과 갱신(D1, 0.3 후보)」."
+    },
+    {
+     "id": "SEC03-Q04",
+     "q": "BFF 구조의 앱에서 DPoP 가 E12 대책이 되지 않는 이유는?",
+     "a": "브라우저가 들고 있는 것은 token 이 아니라 opaque session cookie 라서, cookie 를 묶는 DBSC(또는 위치 재평가)가 대책이다.",
+     "choices": [
+      "DPoP 는 IPv6 에서 동작하지 않아서",
+      "탈취 대상이 token 이 아니라 session cookie 라서",
+      "DPoP 는 서버 저장 session 을 지원하지 않아서",
+      "DPoP 는 Chrome 에서만 지원되어서"
+     ],
+     "answerIndex": 1,
+     "why": "BFF 에서는 token 이 서버에 있고 탈취 대상은 cookie 다. DPoP 는 token 바인딩이라 서버가 RS 에 token 을 보낼 때나 SPA·CLI 가 token 을 직접 들 때 쓴다.",
+     "hint": "방법들 「D2 DPoP(RFC 9449) — OAuth token 을 client 키에 묶기」의 \"이 장 관점의 차이\", 「account-auth-kit 0.2 입력」의 DPoP 줄."
+    },
+    {
+     "id": "SEC03-Q05",
+     "q": "Token Binding 이 실패하고 DBSC 가 배포된 차이 세 가지는?",
+     "a": "① TLS 계층 대신 HTTP header·별도 endpoint ② 매 request 가 아니라 갱신 때만 서명 ③ 한쪽이 지원 안 해도 평소 cookie 로 동작(점진 도입).",
+     "why": "Token Binding 은 TLS 계층 확장이라 TLS 를 끝내는 load balancer·CDN 이 모두 지원해야 했고 Chrome 70 에서 구현이 제거됐다. DBSC 는 이 교훈으로 중간 장비와 무관하게, 비용은 낮게, 점진 도입이 되게 설계됐다.",
+     "hint": "방법들 「D4 Token Binding(RFC 8471~8473) — 실패한 앞선 시도」·「D1 DBSC(Device Bound Session Credentials) — 브라우저 cookie 를 기기 키에 묶기」."
+    },
+    {
+     "id": "SEC03-Q06",
+     "q": "재평가 정책에서 IP·UA 는 값이 없으면 비교를 건너뛰고(fail-open), 기기 신뢰는 값이 없으면 거부(fail-closed)하는 이유는?",
+     "a": "IP·UA 는 \"바뀌면 의심\" 하는 신호라 모르면 보류하고, 기기 신뢰는 \"있어야 허락\" 하는 조건이라 모르면 거부한다.",
+     "why": "의심 신호를 모를 때 거부하면 proxy 뒤 사용자 전원이 막힌다. 허락 조건은 값이 없으면 허락할 근거 자체가 없으므로 거부가 맞다.",
+     "hint": "직접 구현 「핵심 코드 스케치 — 재평가 정책 (Python 3.12, account-auth-kit 0.1.2 구조 기준, 의존 없음)」, 「시험 케이스 후보」 6·7번."
+    },
+    {
+     "id": "SEC03-Q07",
+     "q": "앱이 X-Forwarded-For 를 아무 client 에게서나 믿을 때 IP 바인딩은 어떻게 무력화되나?",
+     "a": "공격자가 header 에 피해자 IP 를 적어 보내면 앱이 그 값을 client IP 로 써서 비교가 통과한다.",
+     "why": "header 는 client 가 마음대로 쓸 수 있으므로, 앞단 trusted proxy 주소에서 온 header 만 읽도록 서버를 설정해야 IP 비교가 의미를 가진다.",
+     "hint": "직접 구현 「흔한 버그」의 X-Forwarded-For 줄."
+    },
+    {
+     "id": "SEC03-Q08",
+     "q": "NIST SP 800-63B-4 가 기기 바인딩과 재인증 주기를 어떻게 연결하나?",
+     "a": "기기 바인딩이 있으면 session secret 이 남아 있어도 되고(§5.1) 재인증 주기를 늘릴 수 있다(§5.2).",
+     "why": "§5.1 은 DBSC 같은 키 증명형 secret 은 MAY persist 라 하고, §5.2 는 기기 바인딩이 있으면 재인증 주기를 MAY be extended 라 한다. 바인딩이 탈취 위험을 줄이므로 잦은 재인증이라는 UX 비용을 줄여 주는 교환이다.",
+     "hint": "원리 「왜 cookie 는 bearer 인가」·「표준이 요구하는 수준」, NIST SP 800-63B-4 §5.1·§5.2."
+    },
+    {
+     "id": "SEC03-Q09",
+     "q": "Okta 2023 지원 시스템 사고에서 HAR 파일이 위험했던 이유와, 앱 쪽에서 할 수 있는 대책 두 가지는?",
+     "a": "HAR 에 request header 가 그대로 담겨 session cookie·token 이 새었다 — 대책은 관리자 session 위치 변화 → 폐기, 그리고 HAR 정제 안내·로그 마스킹.",
+     "why": "HAR 는 브라우저 네트워크 기록이라 cookie·Authorization header 가 들어간다. ① ASN 바인딩·재평가로 다른 위치 재사용을 끊고 ② 지원 요청 전 HAR 정제와 로그·첨부의 cookie 마스킹으로 유출을 줄인다. 근본 대책은 기기 키 바인딩(DBSC)이다.",
+     "hint": "쉬운 설명 「일상 예시」, 「위협과 흔한 실수」의 HAR 줄, Okta 지원 시스템 침해 근본 원인(2023-11-03)."
+    },
+    {
+     "id": "SEC03-Q10",
+     "q": "README 한계 L2(session IP·기기 바인딩 없음)·L3(망 분리는 배포 몫)에 대해 account-auth-kit 0.2 는 무엇을 넣고 무엇을 남기나?",
+     "a": "0.2 는 위치 바인딩(request 마다 prefix·UA·ASN 비교 → 기록·재인증·폐기)을 넣고, 기기 키 바인딩(DBSC)은 0.3 후보로, 망·기기 신뢰 판정은 앞단 몫으로 남겨 TrustedContextSource 로 받기만 한다.",
+     "choices": [
+      "0.2 에 DBSC 를 넣고 위치 비교는 앞단에 맡긴다",
+      "0.2 에 위치 비교를 넣고 DBSC 는 0.3 후보로 남긴다",
+      "0.2 에 망 분리 판정을 직접 구현한다",
+      "0.2 에 브라우저 DPoP 를 넣어 cookie 를 묶는다"
+     ],
+     "answerIndex": 1,
+     "why": "위치 비교는 기존 ip_prefix·ua_hash 에 재평가 hook 만 더하면 되지만, DBSC 는 명세가 아직 Editor's Draft 이고 새 endpoint·table·상태 기계가 필요하다. 위치 대응은 \"막음\" 이 아니라 \"감지·대응\" 임을 README 문장에 밝힌다.",
+     "hint": "「account-auth-kit 0.2 입력」의 「0.2 에 넣을 것」·「명시 한계로 남길 것」."
+    }
+   ]
+  },
+  {
+   "id": "SEC04",
+   "title": "SEC04 JIT·승인형 특권 상승과 break-glass",
+   "part": "3부 특권 줄이기",
+   "summary": "이 장은 넓은 특권(전 tenant 열람·admin)을 쥐고 있는 시간을 줄이는 방법(상시 → 만료 grant → JIT 자가 활성화 → 승인형 JIT → 작업 단위 승인 → ZSP)과, 그 장치가 고장 났을 때 쓰는 break-glass 를 원리·변형·연구·실패 사례까지 비교한다. 결론: 최고 위험 역할은 \"eligible + 승인형 JIT(요청자 ≠ 승인자, 둘 다 phishing-resistant step-up) + 판정 때 만료 + 만료 감사 이벤트\" 이고, break-glass 는 그 밖에 두되 사용마다 경보·사후 검토·90일 점검을 붙인다. account-auth-kit 0.2 는 기존 ChangeRequest 2인 승인 엔진에 role.elevate kind 와 eligibility table 을 얹고 role.expired 이벤트를 만드는 것을 권한다.",
+   "items": [
+    {
+     "id": "SEC04#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "SEC04#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "SEC04#원리",
+     "title": "원리"
+    },
+    {
+     "id": "SEC04#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "SEC04#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "SEC04#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "SEC04#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "SEC04#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "SEC04#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "SEC04#account-auth-kit 0.2 입력",
+     "title": "account-auth-kit 0.2 입력"
+    },
+    {
+     "id": "SEC04#다른 장 연결",
+     "title": "다른 장 연결"
+    },
+    {
+     "id": "SEC04#더 깊이",
+     "title": "더 깊이"
+    }
+   ],
+   "cards": [
+    {
+     "id": "SEC04-Q01",
+     "q": "JIT 는 권한의 \"크기\" 를 줄이나 \"시간\" 을 줄이나? 그래서 무엇과 짝지어야 하나?",
+     "a": "시간을 줄인다 — 크기는 JEA·범위 scope, 활성 시간 안의 양은 ReadQuota(SEC06)와 짝짓는다.",
+     "choices": [
+      "범위를 줄이고 시간은 그대로 둔다",
+      "시간을 줄이고 범위는 JEA·scope 가 맡는다",
+      "경로 수를 줄여 session 탈취를 막는다",
+      "범위와 시간을 함께 줄인다"
+     ],
+     "answerIndex": 1,
+     "why": "Entra PIM 문서는 eligible 과 permanent 의 권한 크기는 같고 노출 시간만 다르다고 설명한다. 그래서 JIT 만으로는 활성화된 몇 시간 안의 대량 열람을 막지 못하고, 범위 축과 양 축은 다른 통제가 맡아야 한다.",
+     "hint": "원리 「노출 = 범위 × 시간 × 경로 수」, 쉬운 설명의 JIT·JEA 정의."
+    },
+    {
+     "id": "SEC04-Q02",
+     "q": "판정 때 만료(C1)만 있으면 무엇이 부족한가?",
+     "a": "권한은 정확히 끝나지만 감사 로그에 \"끝\" 이 남지 않는다.",
+     "why": "판정 층만 있으면 감사 로그에는 role.granted 만 있어, 사후 조사 때 grant row 를 따로 읽어야 유효 구간을 안다. sweeper job 이 role.expired 를 grant id 기준 멱등으로 1회 기록(C2)해야 감사 로그만으로 재구성된다.",
+     "hint": "원리 「만료의 두 층 — 판정과 기록」, 방법들 「C1 판정 때 만료(lazy expiry)」·「C2 만료 sweeper job + 감사 이벤트」."
+    },
+    {
+     "id": "SEC04-Q03",
+     "q": "JIT grant 의 expires_at 을 요청 시각 기준으로 계산하면 생기는 문제는?",
+     "a": "승인 대기 시간만큼 활성 시간이 줄거나 0 이 된다 — 적용(승인) 시각 기준으로 계산한다.",
+     "choices": [
+      "요청 시각 + 요청한 분",
+      "승인(적용) 시각 + 요청한 분",
+      "요청 시각 + pending TTL",
+      "승인 시각 + 전역 상한 분"
+     ],
+     "answerIndex": 1,
+     "why": "승인형 JIT 는 승인 전까지 pending 이고 승인 시점부터 시간을 센다. 0.2 의 elevate_applier 도 expires_at = 적용 시각 + minutes 로 정하고, 시험은 FakeClock 으로 요청·승인 시각을 다르게 해 확인한다.",
+     "hint": "방법들 「A4 승인형 JIT(approval-based elevation)」, 「0.2 에 넣을 것 (P2·P5)」 2번, 「시험 케이스 후보」 3번."
+    },
+    {
+     "id": "SEC04-Q04",
+     "q": "eligibility 를 acct_role_grant 에 status column 으로 넣지 말라는 이유는?",
+     "a": "판정 query 가 status 조건을 하나라도 빠뜨리면 eligible 이 active 가 된다(fail open).",
+     "why": "eligible 은 \"요청하면 받을 수 있다\" 는 사실일 뿐 판정에 들어가면 안 된다. 별도 table(acct_role_eligibility)로 나누면 판정 경로가 eligibility 를 아예 못 보므로 실수해도 닫힌 쪽으로 실패한다(fail closed).",
+     "hint": "「0.2 에 넣을 것 (P2·P5)」 1번 eligibility 모델, 쉬운 설명의 eligible·active 정의."
+    },
+    {
+     "id": "SEC04-Q05",
+     "q": "모든 관리자를 eligible + 승인 필수로 바꿨을 때 생길 수 있는 사고와 대책은?",
+     "a": "승인자가 없거나 모두 eligible 이면 아무도 승인하지 못해 관리가 잠긴다 — 승인자 2명 이상, break-glass 계정 permanent active, 승인자 0 health 경고로 막는다.",
+     "why": "Entra 는 승인자를 정하지 않으면 활성 관리자가 기본 승인자가 되는데 그들마저 eligible 이면 tenant 가 잠긴다고 경고한다. JIT·승인을 강하게 걸수록 가용성 쪽 실패가 커지므로 그 밖에 비상 경로를 둔다.",
+     "hint": "방법들 「A4 승인형 JIT(approval-based elevation)」 단점, 원리 「break-glass 의 원리 — 가용성 쪽 실패를 위한 통제」, 「0.2 에 넣을 것 (P2·P5)」 10번 prod 경고."
+    },
+    {
+     "id": "SEC04-Q06",
+     "q": "비상 계정에 특권 휴면 90일(P1)을 그대로 적용하면?",
+     "a": "평소 안 쓰는 비상 계정이 비활성화돼 정작 비상 때 잠긴다.",
+     "why": "Entra 는 비상 계정을 자동 정리 대상에서 빼고 대신 최소 90일마다 점검하라고 한다. kit 0.2 에 breakglass 표시를 두어 휴면 job 에서 제외하고 로그인 때 즉시 경보를 내는 이유다.",
+     "hint": "「break-glass 실패 방식 모음」 표, 「0.2 에 넣을 것 (P2·P5)」 9번 break-glass 표시."
+    },
+    {
+     "id": "SEC04-Q07",
+     "q": "승인형 JIT 를 무력화하는 지속성 공격은?",
+     "a": "eligibility 자체를 늘리는 것(T1098 Account Manipulation 의 변형)이다 — eligibility 부여·변경도 승인 대상 kind 로 둔다.",
+     "why": "JIT 는 공격자가 붙인 역할을 만료로 끝내 지속성을 막지만, eligibility 를 늘릴 수 있으면 언제든 다시 활성화할 수 있다. 그래서 role.eligibility.grant·role.eligibility.revoke 를 기본 승인 kind 에 넣는다.",
+     "hint": "원리 「JIT 가 막는 공격과 못 막는 공격」, 「0.2 에 넣을 것 (P2·P5)」 3번, MITRE ATT&CK T1098."
+    },
+    {
+     "id": "SEC04-Q08",
+     "q": "활성화 때 passkey 를 요구해도 남는 위험은?",
+     "a": "활성화 뒤 session cookie 탈취·다른 기기에서의 사용이 남는다.",
+     "why": "Entra 문서도 활성화 조건을 만족한 뒤 다른 기기·위치에서 활성 역할을 쓰는 것을 막지 않는다고 적는다. 활성 중 사용 조건(session 바인딩·짧은 session)은 별도 통제이고, 이미 강하게 인증한 session 이면 활성화 때 MFA 를 다시 묻지 않을 수도 있다.",
+     "hint": "원리 「JIT 가 막는 공격과 못 막는 공격」, 방법들 「A3 JIT 자가 활성화(eligible → self-activate)」 단점, SEC03 장."
+    },
+    {
+     "id": "SEC04-Q09",
+     "q": "한 사람이 일반 계정과 관리자 계정을 함께 가질 때, 자기 승인 금지를 account id 비교로만 하면 무엇이 뚫리고 최소 무엇으로 비교해야 하나?",
+     "a": "한 사람이 자기 다른 계정으로 자기 요청을 승인할 수 있다 — 최소한 사람 식별자(사번·DirectoryRecord)로 묶어 비교한다.",
+     "choices": [
+      "account id 비교면 충분하다",
+      "사람 식별자로 묶어 비교한다",
+      "같은 팀 전체를 승인에서 뺀다",
+      "승인자 수를 2명으로 늘린다"
+     ],
+     "answerIndex": 1,
+     "why": "요청자 ≠ 승인자는 승인형 JIT 의 핵심 불변식(NIST AC-5 SoD)인데, 관리자 전용 계정을 따로 두면 한 사람이 계정 둘을 갖는 일이 흔해진다. kit 은 지금 account id 만 비교하므로 0.2 에서도 명시 한계로 두고 README 에 적는다.",
+     "hint": "원리 「자기 승인 금지와 직무 분리(SoD)」, 방법들 「B3 자기 승인 금지의 범위」, 「명시 한계로 둘 것」."
+    },
+    {
+     "id": "SEC04-Q10",
+     "q": "휴면 계산 query 에 expires_at IS NULL OR expires_at > now 조건이 없으면 어떤 문제가 생기고, 왜 이것이 P2 에 들어가나?",
+     "a": "이미 만료된 grant 도 그 역할 보유로 세어져, 휴면 특권 계정 계산에 만료 grant 가 섞인다 — 만료 grant 를 휴면 계산에서 빼는 것이 P2 의 두 번째 절이다.",
+     "why": "판정은 만료 grant 를 버리지만(C1), 휴면 query 는 별도 경로라 같은 조건을 따로 넣어야 한다. 0.2 입력은 AccountRepo.dormant(roles=) 하위 query 에 이 조건을 sql·fake 양쪽에 더하라고 적는다.",
+     "hint": "「이 장에서 답하는 것」 표 P2 행, 「0.2 에 넣을 것 (P2·P5)」 6번 휴면 계산."
+    }
+   ]
+  },
+  {
+   "id": "SEC05",
+   "title": "SEC05 특권 계정 수명주기 — 휴면·퇴직·접근 재검토·비사람 계정",
+   "part": "3부 특권 줄이기",
+   "summary": "특권을 가진 계정이 \"쓰지 않는데 살아 있는\" 상태(휴면·퇴직자·주인 잃은 service key·공용 계정)를 줄이는 네 장치 — 휴면 비활성화, 퇴직 신호, 주기 접근 재검토, 비사람 계정 관리 — 를 원리·방법·표준·제품·구현까지 비교한다. 결론: 특권 휴면은 \"권한 판정이 세는 것을 휴면도 똑같이 센다\"(만료 grant 제외·group 경유 포함)를 원칙으로 0.2 에서 기본 90일로 켜고, 고객사 퇴직은 계약 절차만으로 두지 말고 tenant 관리자 정기 재확인을 더하며, service key 에는 만료·주인·미사용 보고를 붙인다.",
+   "items": [
+    {
+     "id": "SEC05#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "SEC05#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "SEC05#원리",
+     "title": "원리"
+    },
+    {
+     "id": "SEC05#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "SEC05#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "SEC05#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "SEC05#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "SEC05#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "SEC05#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "SEC05#account-auth-kit 0.2 입력",
+     "title": "account-auth-kit 0.2 입력"
+    },
+    {
+     "id": "SEC05#다른 장 연결",
+     "title": "다른 장 연결"
+    },
+    {
+     "id": "SEC05#더 깊이",
+     "title": "더 깊이"
+    }
+   ],
+   "cards": [
+    {
+     "id": "SEC05-Q01",
+     "q": "퇴직 신호(①)가 잘 돌아가면 휴면(②)은 필요 없나?",
+     "a": "필요하다 — 휴면은 원천 없이 \"쓰지 않음\" 만으로 동작하는 안전망이다.",
+     "why": "퇴직 신호는 원천에 있는 계정만 끊는다. 로컬 계정·비상 계정·원천 매칭 실패 계정·service key 는 원천에 없고, 원천이 늦거나 고객사처럼 원천 자체가 없는 경우도 있다.",
+     "hint": "원리 「네 겹 — 신호 · 시간 · 사람 확인 · 대상 확장」, 「orphan — 주인 잃은 계정」, NIST SP 800-53 r5 AC-2(3)."
+    },
+    {
+     "id": "SEC05-Q02",
+     "q": "kit 0.1.2 에서 group 경유로만 tenant_admin 을 가진 고객 계정은 특권 휴면 대상인가?",
+     "a": "아니다 — 휴면 목록은 계정에 직접 붙은 grant 만 센다.",
+     "why": "휴면 목록 SQL 은 subject_type = 'account' grant 만 본다(acct-sql/uow.py:150-160). 권한 판정(effective_grants)은 group grant 를 세므로 \"특권인데 휴면 제외\" 구멍이 생긴다 — 0.2 후보 P3.",
+     "hint": "원리 「무엇을 \"특권\" 으로 셀까 — 권한 판정과 같은 계산을 써야 한다」, 「account-auth-kit 0.2 입력」."
+    },
+    {
+     "id": "SEC05-Q03",
+     "q": "만료된 admin grant 를 휴면 특권 계산에 넣으면 왜 문제인가? 보안상 더 엄격한 쪽 아닌가?",
+     "a": "보안 이득 없이 정상 사용자 잠금·문의만 는다.",
+     "why": "이미 특권이 끝난 계정을 특권 기준(짧은 N일)으로 비활성화하기 때문이다. 판정과 휴면이 다른 술어(predicate)를 쓰는 것 자체가 버그의 원천이다(P2).",
+     "hint": "원리 「무엇을 \"특권\" 으로 셀까 — 권한 판정과 같은 계산을 써야 한다」 의 과잉 오류 행, 직접 구현 「흐름 — 만료 grant 기록(P2)」."
+    },
+    {
+     "id": "SEC05-Q04",
+     "q": "특권 접근 재검토에서 \"미응답 = 회수\" 를 고를 때 같이 둬야 할 것 세 가지는?",
+     "a": "사전 경고·리마인더, fallback 검토자, 회수 뒤 빠른 복구 경로(JIT 요청).",
+     "why": "특권은 피해 반경이 커서 닫힌 기본값(미응답 = 회수)이 맞지만, 검토자 부재·정당한 사용자 잠금을 막는 장치가 같이 있어야 한다. Entra 문서도 Remove access + Auto apply 조합이 자원 접근을 전부 회수할 수 있다고 경고한다.",
+     "hint": "방법들 「C4 미응답 처리」, Microsoft Learn「Create an access review」."
+    },
+    {
+     "id": "SEC05-Q05",
+     "q": "Cloudflare 2023 사고에서 빠진 통제를 이 장의 갈래로 말하면?",
+     "a": "갈래 D(비사람 계정) — inventory 와 last_used_at 기반 판단.",
+     "choices": [
+      "갈래 B(퇴직 신호) — SCIM 수신",
+      "갈래 E(공용 계정 제거) — 개인 계정 전환",
+      "갈래 D(비사람 계정) — inventory 와 last_used_at",
+      "갈래 C(접근 재검토) — 다단계 검토"
+     ],
+     "answerIndex": 2,
+     "why": "회전 대상 중 service token 1개·service account 3개를 \"안 쓰는 줄\" 알고 회전하지 않았다. 사람의 믿음 대신 사용 기록으로 확인했어야 한다.",
+     "hint": "원리 「사례로 보는 실패 모양」, 방법들 「D3 미사용 보고·비활성화(last_used_at)」."
+    },
+    {
+     "id": "SEC05-Q06",
+     "q": "왜 특권 휴면 기본값을 0.1.x 패치에서 켜지 않았나? 0.2 에서는 무엇을 더해야 하나?",
+     "a": "패치 업그레이드 첫 실행에서 기존 특권 계정이 한꺼번에 비활성화돼 호환이 깨지기 때문이다. 0.2 에서는 dry_run 보고와 사전 경고를 같이 넣는다.",
+     "why": "기본값을 켜는 순간 이미 오래 안 쓴 특권 계정이 첫 job 실행에서 모두 잡힌다(대조 표 G9). 보고만(A4)으로 후보를 먼저 보이고 단계형(A3)으로 경고 → 회수 → 비활성화 순서를 밟으면 첫 실행 사고가 줄어든다.",
+     "hint": "방법들 「A3 단계형 — 경고 → 특권 회수 → 계정 비활성화」·「A4 보고만(report-only, dry run)」, 「account-auth-kit 0.2 입력」."
+    },
+    {
+     "id": "SEC05-Q07",
+     "q": "customer realm 에서 SCIM 없이 고객사 퇴직을 줄이는 방법과 그 약점은?",
+     "a": "tenant 관리자 정기 재확인(B5) — 약점은 관리자 본인이 퇴직자일 때와 응답률·고무도장.",
+     "why": "우리 서비스는 고객사 인사 시스템을 볼 수 없어 분기마다 고객사 관리자에게 명단을 확인받는 것이 원천 연동 없이 도는 길이다. 관리자 본인이 퇴직자면 소용없으므로 관리자 2인 이상이 필요하다.",
+     "hint": "원리 「customer realm 의 퇴직 — 누가 알고 누가 끄나」, 방법들 「B5 tenant 관리자 정기 재확인(attestation)」·「B6 계약·운영 절차(통보)」."
+    },
+    {
+     "id": "SEC05-Q08",
+     "q": "위탁 직원 관리자 계정에 최소한 무엇을 붙이나?",
+     "a": "사람별 계정, grant expires_at = 계약 종료일, 우리 쪽 sponsor 기록, 특권이면 phishing-resistant MFA.",
+     "why": "위탁 직원은 우리 인사 원천에 없어 퇴직 신호가 오지 않으므로 계약 종료일로 grant 가 스스로 끝나야 하고, sponsor 가 퇴직하면 재배정 신호가 나야 한다. 공용 계정은 누가 했는지 감사가 안 된다.",
+     "hint": "방법들 「D6 위탁(외주) 직원 계정」, 원리 「공용 계정 — 왜 특권에서 특히 나쁜가」, ISMS-P 2.5.5."
+    },
+    {
+     "id": "SEC05-Q09",
+     "q": "\"특권 휴면 90일\" 은 공식 기준값인가?",
+     "a": "아니다 — kit 의 제안값이고 PCI 상한과 같은 값일 뿐이다.",
+     "choices": [
+      "그렇다, NIST 가 특권 계정에 90일을 정한다",
+      "그렇다, CIS v8 5.3 이 특권 계정에 90일을 정한다",
+      "아니다, kit 제안값이고 PCI 전체 사용자 상한과 같을 뿐이다",
+      "아니다, 국내 법정 휴면 1년을 줄인 값이다"
+     ],
+     "answerIndex": 2,
+     "why": "NIST AC-2(3) 는 기간을 조직이 정하게 하고, CIS v8 5.3 은 45일, PCI DSS v4.0.1 8.2.6 은 전체 사용자 90일 상한이다. 특권 전용 공식 값은 없다.",
+     "hint": "방법들 「A5 휴면 기간 고르기 — 기준값 비교」, CIS Controls v8 Control 5, PCI DSS v4.0.1 8.2.6."
+    },
+    {
+     "id": "SEC05-Q10",
+     "q": "로그인은 매일 하는데 admin 권한은 1년간 한 번도 쓰지 않은 계정은 네 겹 중 어느 것이 잡나?",
+     "a": "접근 재검토(③) — 마지막 특권 사용을 근거로 사람이 회수를 판단한다.",
+     "choices": [
+      "휴면(②) — last_login_at 기준 비활성화",
+      "퇴직 신호(①) — 디렉터리 재확인",
+      "접근 재검토(③) — 마지막 특권 사용을 근거로 판단",
+      "대상 확장(④) — 비사람 계정 inventory"
+     ],
+     "answerIndex": 2,
+     "why": "휴면은 last_login_at 을 보므로 매일 로그인하면 걸리지 않고, 퇴직 신호는 재직자라 오지 않는다. \"쓰지만 필요 없는\" 권한은 사람 판단이 붙는 접근 재검토만 잡을 수 있고, 마지막 특권 사용 시각은 그 판단 근거 자료로 쓴다.",
+     "hint": "원리 「네 겹 — 신호 · 시간 · 사람 확인 · 대상 확장」·「\"마지막 사용\" 을 무엇으로 재나」, 방법들 「C3 사용 근거 첨부(decision helper)」."
+    }
+   ]
+  },
+  {
+   "id": "SEC06",
+   "title": "SEC06 읽기 양·속도 한도 — ReadQuota",
+   "part": "4부 읽기·반출",
+   "summary": "로그인을 마친 계정이 \"얼마나 많이·얼마나 빨리\" 읽을 수 있는지에 상한을 두는 방법(ReadQuota)을 무엇을 key 로 잡고, 무엇을 세고, 어디서 세고, 넘으면 어떻게 하는지 네 축으로 나눠 비교한다. 결론은 IP 가 아니라 주체(계정·credential) 단위로, request 수가 아니라 응답 row·정보주체·tenant 수를, response 를 보내기 직전에 세고, 넘으면 먼저 step-up·경보(소프트)를 하고 마지막에 거부(하드)한다 는 것이다. account-auth-kit 0.2 에는 ReadQuota port + SQL 고정 창 기본 구현 + data.quota_exceeded 감사 이벤트 + data.export step-up 기본 대상을 넣고, 기준선 학습·DB 층 계측은 명시 한계로 둔다.",
+   "items": [
+    {
+     "id": "SEC06#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "SEC06#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "SEC06#원리",
+     "title": "원리"
+    },
+    {
+     "id": "SEC06#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "SEC06#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "SEC06#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "SEC06#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "SEC06#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "SEC06#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "SEC06#account-auth-kit 0.2 입력",
+     "title": "account-auth-kit 0.2 입력"
+    },
+    {
+     "id": "SEC06#다른 장 연결",
+     "title": "다른 장 연결"
+    },
+    {
+     "id": "SEC06#더 깊이",
+     "title": "더 깊이"
+    }
+   ],
+   "cards": [
+    {
+     "id": "SEC06-Q01",
+     "q": "limit=1 로 100번 요청한 것과 limit=100 으로 1번 요청한 것을 같게 세려면 단위를 무엇으로 해야 하나?",
+     "a": "응답 row 수(U2) 또는 정보주체 수(U3)로 센다.",
+     "choices": [
+      "request 수(U1)",
+      "응답 row 수(U2)·정보주체 수(U3)",
+      "출처 IP 수(K1)",
+      "서로 다른 tenant 수(U4)"
+     ],
+     "answerIndex": 1,
+     "why": "request 수(U1)로 세면 limit 을 키운 한 번이 1로 잡혀 두 경우가 100배 차이 난다. row·정보주체 수는 실제로 나간 데이터 양이라 페이지 크기를 바꿔도 같은 값이 된다. 목록·상세·내보내기가 이 단위로 같은 예산을 나눠 써야 route 를 바꿔 우회하지 못한다.",
+     "hint": "방법들 「U1 request 수」·「U2 row(record) 수」·「U3 서로 다른 정보주체 수(distinct subjects)」, OWASP API4:2023."
+    },
+    {
+     "id": "SEC06-Q02",
+     "q": "charge 를 response 를 보낸 뒤에 부르면 무엇이 문제인가?",
+     "a": "한도를 넘은 그 response 는 이미 나간 뒤라 막지 못한다.",
+     "why": "row 수는 쿼리를 실행해야 알 수 있으므로, 결과를 만든 뒤 직렬화·전송 전에 charge 하고 allow 일 때만 보내야 한다. peek 로 쿼리 크기를 남은 양 이하로 줄이고 charge 로 확정하는 두 번 순서다.",
+     "hint": "원리 「응답 직전에 세야 하는 이유 — \"세기 전에 이미 나갔다\" 문제」, 직접 구현 「흔한 버그」."
+    },
+    {
+     "id": "SEC06-Q03",
+     "q": "거부된 charge 를 counter 에 더하면 어떤 일이 생기나?",
+     "a": "정당한 사용자가 재시도할수록 더 오래 막힌다.",
+     "why": "받지 못한 데이터까지 셈하기 때문이다. 거부된 charge 는 rollback 해 어느 key 에도 더하지 않는다 — kit RateLimiter.acquire 의 \"거부된 시도는 세지 않는다\" 와 같은 규칙이다.",
+     "hint": "원리 「응답 직전에 세야 하는 이유 — \"세기 전에 이미 나갔다\" 문제」, 「시험 케이스 후보」 T3."
+    },
+    {
+     "id": "SEC06-Q04",
+     "q": "대행(impersonation) 중인 staff 의 읽기는 누구의 counter 에 쌓아야 하나, 왜?",
+     "a": "staff 계정(impersonator_account_id)의 counter 에 쌓는다.",
+     "choices": [
+      "staff 계정(impersonator_account_id)",
+      "대행 대상 고객 계정",
+      "고객 계정과 staff 계정에 반씩",
+      "고객이 속한 tenant 합계 key"
+     ],
+     "answerIndex": 0,
+     "why": "고객 계정에 쌓으면 staff 가 고객을 차례로 바꿔 대행하며 각 고객의 한도를 조금씩 써 전체 한도를 피한다. quota 주체는 impersonator_account_id or account_id 로 잡는다.",
+     "hint": "방법들 「K2 계정(principal)」 의 함정 — 대행, 「흔한 버그」, 시험 케이스 T5."
+    },
+    {
+     "id": "SEC06-Q05",
+     "q": "집단 key(역할·tenant·전역)로 거부까지 하면 안 되는 이유는?",
+     "a": "한 사람이 집단 한도를 다 쓰면 그 집단 전원이 막히는 서비스 거부가 되기 때문이다.",
+     "why": "집단 key 는 계정 N개 분산·공모를 합계로 잡는 경보용이다. step-up 도 집단 전원을 재인증으로 막아 같은 모양이 되므로, step-up·거부는 개인 key 로만 하고 집단 key 는 경보만 한다(기동 검사로 강제).",
+     "hint": "방법들 「K4 역할·tenant·전역 합계」·「key 조합 원칙」, 시험 케이스 T12."
+    },
+    {
+     "id": "SEC06-Q06",
+     "q": "step-up 성공 때 counter 를 0으로 되돌리면 무엇이 문제인가?",
+     "a": "재인증 한 번에 한도가 무한해진다.",
+     "why": "AitM phishing 으로 재인증까지 통과한 공격자는 계속 가져간다. 그래서 정해진 추가 허용량(bonus)만 주고 하루 step-up 횟수에 상한을 두며, bonus 도 감사에 남긴다. 특권 역할의 step-up 은 passkey 로 한다.",
+     "hint": "방법들 「A4 step-up(재인증)」, 「흔한 버그」, 시험 케이스 T4."
+    },
+    {
+     "id": "SEC06-Q07",
+     "q": "쿠팡 사례에서 계정 단위 ReadQuota 만으로 충분하지 않았을 것이라고 보는 이유와, 무엇을 더해야 하나?",
+     "a": "요청이 여러 고객 계정에 흩어져 계정마다 counter 가 작았을 것이므로(추정), 발급 key(kid)·전역 합계 경보를 더한다.",
+     "why": "서명키 악용처럼 임의 계정으로 인증된 request 를 만들 수 있으면 계정 key 는 의미가 없다. 서명 key 단위·전역 합계 counter 는 흩어진 조회를 한곳에 모아 잡지만, 정상 트래픽도 모이므로 한도가 아니라 경보로만 쓴다.",
+     "hint": "원리 「왜 로그인 뒤에 양을 세야 하나」, 방법들 「K3 session·credential(발급 key)」·「K4 역할·tenant·전역 합계」."
+    },
+    {
+     "id": "SEC06-Q08",
+     "q": "NIST SP 800-53 AC-7 은 ReadQuota 의 근거 통제인가?",
+     "a": "아니다 — AC-7 은 연속 로그인 실패 제한이고, 근거는 AC-23 Data Mining Protection 이다.",
+     "choices": [
+      "맞다 — AC-7 이 읽기 횟수 제한을 정한다",
+      "아니다 — AC-7 은 로그인 실패 제한, 근거는 AC-23",
+      "아니다 — 근거는 AC-2 계정 관리 하나뿐",
+      "맞다 — AC-7 과 AC-23 은 같은 통제다"
+     ],
+     "answerIndex": 1,
+     "why": "AC-23 은 무단 데이터 마이닝 탐지·방지 기법으로 질의 수·빈도 제한을 예로 든다. SI-4(20)·AC-2(12) 감시도 읽기 양 통제의 취지에 가깝다.",
+     "hint": "원리 「왜 로그인 뒤에 양을 세야 하나」, 「표준·논문」, NIST SP 800-53 Rev.5 AC-23."
+    },
+    {
+     "id": "SEC06-Q09",
+     "q": "앞단 WAF rate-based rule 이 ReadQuota 를 대신하지 못하는 이유 두 가지는?",
+     "a": "① 대부분 request 수만 세고 응답 row 수를 모른다. ② 계정이 아니라 IP·cookie 등을 key 로 써 재로그인·IP 회전에 흩어진다.",
+     "why": "앞단은 응답 body 를 보기 전·인증 주체를 알기 전에 판정하므로 IP 회전(금융보안원 사례)과 큰 limit 을 못 막고, 앱 감사·step-up 과도 연결되지 않는다. 그래서 앞단 한도는 과부하·봇용 1차 방어로 두고 ReadQuota 는 앱 응답 직전에 센다.",
+     "hint": "방법들 「K1 출처(IP·IP 대역·ASN)」·「W1 앞단 gateway·WAF·CDN」·「W2 앱 응답 직전(handler·middleware)」, 「방법 비교표 — 위협 관점」."
+    },
+    {
+     "id": "SEC06-Q10",
+     "q": "rate limit·quota·이상 탐지(기준선 학습)는 각각 어떤 질문에 답하고, ReadQuota 는 어디까지 맡나?",
+     "a": "rate limit 은 짧은 시간의 몰아치기, quota 는 긴 시간 동안 가져간 양에 답하고, ReadQuota 는 둘을 고정 한도 규칙으로 함께 두되 기준선 탐지와 내보내기 파일 생성은 맡지 않는다.",
+     "why": "rate limit 은 초·분 창으로 시스템을 보호하고 근사치로 충분하며, quota 는 시간·일·주 창으로 데이터를 보호하고 정확해야 한다 — 그래서 1분 창과 긴 창을 같이 쓴다. 개인 기준선·peer group 학습은 SEC08 몫이고, 내보내기 job·워터마크·마스킹은 앱(SEC07) 몫이며 ReadQuota 는 앱이 알려 준 내보낸 row 수를 같은 예산으로 셀 뿐이다.",
+     "hint": "원리 「rate limit 와 quota 는 다른 질문에 답한다」, 「명시 한계로 둘 것」, Apigee \"Comparing Quota and SpikeArrest policies\"."
+    }
+   ]
+  },
+  {
+   "id": "SEC07",
+   "title": "SEC07 반출 통제 — 내보내기 승인·워터마크·마스킹·tokenization",
+   "part": "4부 읽기·반출",
+   "summary": "정상 권한으로 읽은 데이터가 파일·화면·사본으로 시스템 밖에 나가는 것(반출)을 줄이기(최소 필드·마스킹·tokenization)·막기(step-up·2인 승인)·표시하기(워터마크·수신자별 fingerprint)·기록하기(data.exported) 네 축으로 원리·변형·연구·실패 사례까지 다룬다. 결론은 IRM(파일 암호화 + 사용 권한) 밖으로 나간 뒤에는 거의 아무것도 못 하므로 통제를 데이터가 서버에 있을 때 걸어야 하고, 마스킹은 열람 권한을 대신하지 않는다는 것이다. account-auth-kit 0.2 는 내보내기 관문(step-up 기본 대상 data.export·승인 kind·이벤트 이름)까지만 맡고 파일 생성·워터마크·마스킹은 앱 몫(L4)으로 유지하며, 정할 것은 없다.",
+   "items": [
+    {
+     "id": "SEC07#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "SEC07#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "SEC07#원리",
+     "title": "원리"
+    },
+    {
+     "id": "SEC07#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "SEC07#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "SEC07#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "SEC07#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "SEC07#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "SEC07#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "SEC07#사례 — 2026-11 금융보안원 상시평가 시스템과 반출",
+     "title": "사례 — 2026-11 금융보안원 상시평가 시스템과 반출"
+    },
+    {
+     "id": "SEC07#account-auth-kit 0.2 입력",
+     "title": "account-auth-kit 0.2 입력"
+    },
+    {
+     "id": "SEC07#다른 장 연결",
+     "title": "다른 장 연결"
+    },
+    {
+     "id": "SEC07#더 깊이",
+     "title": "더 깊이"
+    }
+   ],
+   "cards": [
+    {
+     "id": "SEC07-Q01",
+     "q": "반출 통제의 네 축은 무엇이고, 워터마크는 어느 축이며 왜 관문을 대신하지 못하나?",
+     "a": "네 축은 줄이기·막기·표시하기·기록하기이고, 워터마크는 표시하기 축이라 나가는 것을 막지 못한다.",
+     "choices": [
+      "막기 — 내보내기를 그 자리에서 차단",
+      "표시하기 — 사후 추적과 억지만",
+      "줄이기 — 원문이 나가는 양을 줄임",
+      "기록하기 — 누가 몇 건 받았나 남김"
+     ],
+     "answerIndex": 1,
+     "why": "표시하기는 사후 추적과 억지만 한다. 탈취 계정이 내보낸 파일이면 표식은 \"그 계정\" 까지만 가리키고, 네 축은 서로를 대신하지 못한다.",
+     "hint": "원리 「2. 네 축 — 줄이기·막기·표시하기·기록하기」, 갈래 B 「B1 가시 워터마크 (파일·화면)」."
+    },
+    {
+     "id": "SEC07-Q02",
+     "q": "\"마스킹은 열람 권한을 대신하지 않는다\" 의 세 근거는?",
+     "a": "① 재식별 ② 우회 경로 ③ 마스킹된 값도 유출 건수에 들어감.",
+     "why": "부분값은 회사·직책 같은 다른 정보와 합치면 사람을 특정한다. 화면에서만 가리면 API response·CSV·검색 조건으로 새고, DB 동적 마스킹도 조건 추론으로 값이 샌다(Microsoft 문서가 단독 사용 금지를 경고). 마스킹된 값도 개인정보라 2026-11 사건에서 350여 건이 따로 집계됐다.",
+     "hint": "원리 「3. 마스킹은 열람 권한을 대신하지 않는다 (G10)」, Microsoft Dynamic Data Masking 문서의 inference·brute-force 경고 절."
+    },
+    {
+     "id": "SEC07-Q03",
+     "q": "2026-11 기준 새 설계에서 FPE 를 쓴다면 어떤 방식과 조건을 고르나, 근거는?",
+     "a": "FF1 을 고르고 radix^minlen ≥ 1 000 000 을 지킨다.",
+     "choices": [
+      "FF3-1, 정의역 하한 없음",
+      "FF1, 정의역 10⁶ 이상",
+      "FF3, 정의역 100 이상",
+      "FF1, 정의역 100 이상"
+     ],
+     "answerIndex": 1,
+     "why": "Durak–Vaudenay(2017)가 작은 정의역의 FF3 를, Beyne(2021)가 FF3-1 을 공격한 뒤 SP 800-38G Rev.1 2pd(2025-02)는 FF3 계열을 빼고 FF1 만 남기며 정의역 하한을 요구(\"shall\")로 올렸다. 아직 초안이지만 새 설계의 기준으로 삼는 것이 안전하다.",
+     "hint": "원리 「5. 형식 보존이 왜 어려운가 — FPE 의 작은 정의역 문제」, 방법 「D2 FPE (FF1)」, NIST SP 800-38G Rev.1 2pd §4."
+    },
+    {
+     "id": "SEC07-Q04",
+     "q": "소유권 워터마크와 fingerprint 의 차이, fingerprint 가 공모에 약한 이유는?",
+     "a": "소유권 워터마크는 모두에게 같은 표식, fingerprint 는 수신자마다 다른 표식이며, 두 사본을 비교하면 표식 위치가 드러나 섞어서 지울 수 있다.",
+     "why": "수신자 둘이 사본을 비교하면 서로 다른 위치가 곧 표식 위치다. 그 위치를 섞으면 어느 쪽 표식도 아닌 사본이 나온다. Boneh–Shaw·Tardos 부호는 marking assumption 아래 공모자 c 명 이하면 적어도 한 명을 찾도록 보장한다.",
+     "hint": "원리 「4. 표시(워터마크)의 정보 이론 — 왜 공모에 약한가」, 방법 「B5 공모 저항 fingerprint 부호 (traitor tracing)」."
+    },
+    {
+     "id": "SEC07-Q05",
+     "q": "tokenization 이 반출 통제에 주는 가장 큰 효과와, 그것을 무력화하는 설계 실수는?",
+     "a": "원문을 볼 수 있는 지점을 detokenize 하나로 모으는 것이 효과이고, detokenize 권한을 넓게 주는 것이 무력화 실수다.",
+     "why": "token 만 있는 시스템·파일은 털려도 원문이 없어서 통제를 detokenize 지점 하나에 붙이면 된다. detokenize 권한은 사실상 원문 열람 권한이라, 넓게 주면 효과가 사라진다(PCI 가이드라인: PAN 을 되찾을 수 있는 환경은 범위 안).",
+     "hint": "방법 「D1 vault tokenization (무작위 token)」·「D4 tokenization 의 범위 축소 효과와 한계」, PCI DSS Tokenization Guidelines §2.2."
+    },
+    {
+     "id": "SEC07-Q06",
+     "q": "웹 어드민에서 화면 캡처 방지를 기대하지 않는 이유와 대신 할 것은?",
+     "a": "웹 페이지가 OS 스크린샷을 막을 표준 API 가 없으니, 대신 화면 가시 워터마크·열람 양 한도·열람 기록을 둔다.",
+     "why": "Android FLAG_SECURE·Windows WDA_EXCLUDEFROMCAPTURE 는 앱 창 수준이라 브라우저 웹 페이지가 스스로 걸 수 없다. 사람 눈에 보이는 순간 카메라로 찍을 수 있다(analog hole). 가시 워터마크를 두면 찍힌 화면에 이름이 같이 찍힌다.",
+     "hint": "방법 「E3 화면 캡처 방지와 그 한계」, 원리 「1. 반출은 \"읽기 뒤의 경계 넘기\" 다」, 양 한도는 SEC06."
+    },
+    {
+     "id": "SEC07-Q07",
+     "q": "account-auth-kit 0.1.2 만으로 승인형 내보내기를 만들려면 앱이 무엇을 하나, 0.2 는 무엇을 더하나?",
+     "a": "앱은 approval.required_kinds 에 data.export 추가·data.export.request 권한·받는 쪽 applier 등록을 하고, 0.2 는 require_export step-up·설정 export.*·payload 형식·data.revealed·시험을 더한다.",
+     "why": "kit 은 이미 재인증·change request·감사 부품을 갖고 있어 연결만 하면 된다. applier 가 없으면 unknown_kind 로 job 이 시작되지 않는다. 경계는 L4 그대로 — kit 은 관문(누가·언제·누구 승인)과 기록, 앱은 파일 내용(profile·마스킹·워터마크)을 맡는다.",
+     "hint": "「account-auth-kit 0.2 입력」의 0.1.2 부품 표와 \"0.2 에 넣을 것(안)\", 「직접 구현」 「흐름 — 승인형 내보내기 + fingerprint」."
+    },
+    {
+     "id": "SEC07-Q08",
+     "q": "「안전성 확보조치 기준」에서 반출과 직접 닿는 조항 둘은?",
+     "a": "제8조②(다운로드 상황 점검)와 제12조①(출력 항목 최소화).",
+     "why": "제8조②는 접속기록 및 개인정보 다운로드 상황을 확인·점검하는 주기·방법·사후조치를 내부 관리계획으로 정하게 해 다운로드 기록을 요구한다. 제12조①은 출력 시 용도를 특정하고 출력 항목을 최소화하게 해, 목적별 내보내기 profile 의 근거가 된다.",
+     "hint": "원리 「6. 법규가 요구하는 것 (국내)」, 방법 「A6 목적별 내보내기 profile (출력 항목 최소화)」."
+    },
+    {
+     "id": "SEC07-Q09",
+     "q": "다운로드를 \"열람의 한 종류\" 로 보면 안 되는 이유와, 내보내기 관문에 함께 둘 것은?",
+     "a": "다운로드는 경계를 넘는 사건이라, 관문(step-up·2인 승인·비동기 job + 1회 링크)과 수신자별 fingerprint 를 함께 둔다.",
+     "why": "권한 판정은 \"볼 수 있나\" 를 묻고 반출 통제는 \"본 것이 어디로 가나\" 를 묻는다. 파일은 복제·전달·보관되고 회수할 수 없어서, 같은 권한이라도 화면 10건과 CSV 10건은 위험이 다르다. 비동기 job 은 반출 경로를 한곳에 모아 관문·표식을 붙이게 해 준다.",
+     "hint": "원리 「1. 반출은 \"읽기 뒤의 경계 넘기\" 다」, 방법 「A5 비동기 job + 1회용 짧은 링크」·「B3 데이터 값 fingerprint (관계형 워터마킹)」."
+    },
+    {
+     "id": "SEC07-Q10",
+     "q": "정적 마스킹과 동적 마스킹은 무엇이 다르고, 앱 사용자에게 보이는 값을 가릴 때는 어느 방법을 쓰나?",
+     "a": "정적 마스킹은 사본을 만들 때 값 자체를 바꾸고 동적 마스킹은 저장 값을 두고 읽을 때 가리며, 앱 사용자 대상은 앱 계층 직렬화 마스킹(C3)을 쓴다.",
+     "choices": [
+      "DB 동적 마스킹 — 읽을 때 DB 가 가림",
+      "정적 마스킹 — 사본 값을 바꿈",
+      "앱 계층 직렬화 마스킹 — response 를 만들 때 가림",
+      "화면 렌더링 마스킹 — 브라우저에서 가림"
+     ],
+     "answerIndex": 2,
+     "why": "정적 마스킹 사본은 유출돼도 원문이 없다. DB 동적 마스킹은 앱이 한 DB 사용자로 접속하면 앱 사용자별 구분이 안 되고(앱이 UNMASK 를 가지면 모두에게 원문), 조건 추론으로 값이 샌다. 그래서 DB 동적 마스킹은 사람이 DB 에 직접 붙는 분석·운영 경로에 쓴다.",
+     "hint": "방법 「C1 정적 마스킹 (사본 생성)」·「C2 DB 동적 마스킹」·「C3 앱 계층 직렬화 마스킹 (field-level authorization)」."
+    }
+   ]
+  },
+  {
+   "id": "SEC08",
+   "title": "SEC08 로그인 뒤 이상 탐지와 대응 — UEBA·IP 회전·CAEP",
+   "part": "4부 읽기·반출",
+   "summary": "유효한 자격 증명으로 로그인한 계정이 접속마다 IP 를 바꾸며 데이터를 읽을 때 무엇을 신호로 세고(계정·session 단위 IP 대역 수·ASN·조회량·peer group), 탐지 결과를 어떤 대응(step-up·특권 정지·session 폐기)과 어떤 형식(OCSF·SSF/CAEP SET)으로 잇는지 답한다. 결론은 \"IP 는 key 가 아니라 세는 신호, 탐지 엔진은 밖, 대응 손잡이와 전달 adapter 는 안\" 이며, account-auth-kit 0.2 에는 AuditSink 전달 adapter(outbox + OCSF) 와 외부 위험 신호를 받는 대응 port 를 넣고 탐지 엔진은 명시 한계(L1)로 남기기를 권한다. 정할 것 없음.",
+   "items": [
+    {
+     "id": "SEC08#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "SEC08#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "SEC08#원리",
+     "title": "원리"
+    },
+    {
+     "id": "SEC08#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "SEC08#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "SEC08#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "SEC08#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "SEC08#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "SEC08#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "SEC08#account-auth-kit 0.2 입력",
+     "title": "account-auth-kit 0.2 입력"
+    },
+    {
+     "id": "SEC08#다른 장 연결",
+     "title": "다른 장 연결"
+    }
+   ],
+   "cards": [
+    {
+     "id": "SEC08-Q01",
+     "q": "IP 회전 공격에서 IP 를 rate limit key 로 쓰면 왜 실패하고, 대신 무엇을 key 로 두나?",
+     "a": "IP 는 key 가 아니라 세는 신호다 — key 는 계정·session·tenant 로 두고, 그 아래에서 서로 다른 /24·ASN 수를 센다.",
+     "why": "IP 를 key 로 쓰면 IP 마다 counter 가 0 에서 새로 시작해 \"처음 보는 IP 가 조금\" 이 반복될 뿐이다. 공격자가 바꾸기 어려운 계정·session 으로 묶어야 \"한 계정이 1시간에 /24 를 여러 개 거쳤다\" 는 이상이 보인다.",
+     "hint": "원리 「IP 회전을 세는 법 — key 와 신호의 차이」, 방법들 「가2 위치·네트워크 신호(IP 회전·ASN·불가능 이동·익명화)」."
+    },
+    {
+     "id": "SEC08-Q02",
+     "q": "cookie 탈취형과 \"접속마다 새 로그인\" 형 IP 회전은 어느 단위에 신호가 찍히나?",
+     "a": "cookie 탈취형은 session 하나 안의 IP·ASN 변경으로, 매번 로그인형은 계정 단위의 새 session 수·서로 다른 /24 수로 찍힌다.",
+     "choices": [
+      "cookie 탈취형 = 계정 단위 새 session 수, 매번 로그인형 = session 안 IP 변경",
+      "cookie 탈취형 = session 안 IP 변경, 매번 로그인형 = 계정 단위 새 session 수",
+      "둘 다 session 안 IP 변경으로만 찍히고 계정 단위는 조용함",
+      "둘 다 계정 단위 신호가 없고 조회량만 남음"
+     ],
+     "answerIndex": 1,
+     "why": "훔친 cookie 를 rotating proxy 로 재사용하면 같은 session 이 여러 /24 에서 쓰인다. 매번 새로 로그인하면 각 session 은 IP 하나라 조용하고, 대신 계정 창에서 새 session 수와 /24·ASN 수가 오른다.",
+     "hint": "원리 「IP 회전을 세는 법 — key 와 신호의 차이」 의 공격 모양 표, 대응은 방법들 「나4 session 폐기」."
+    },
+    {
+     "id": "SEC08-Q03",
+     "q": "특권 계정 100개를 하루 한 번 판정하는 탐지기(탐지율 99%, 오탐률 1%), 한 해 실제 탈취 1건이면 경보 하나가 진짜일 확률은?",
+     "a": "약 0.3%.",
+     "why": "판정 100 × 365 = 36,500번 중 오탐 약 365건, 진짜 약 1건이라 1/366 이다(base-rate fallacy, Axelsson 2000). 그래서 점수형 탐지는 계정 비활성 같은 비싼 대응에 자동으로 걸지 않고 사람 검토·step-up 에만 건다.",
+     "hint": "원리 「기준선과 base rate — 왜 오탐이 운영을 결정하나」, 방법들 「갈래 나 — 대응 방식」 의 사다리, Axelsson(ACM TISSEC 2000)."
+    },
+    {
+     "id": "SEC08-Q04",
+     "q": "CAEP risk-level-change 의 필수 필드 두 개와 level 값은?",
+     "a": "current_level(LOW·MEDIUM·HIGH)과 principal(USER·SESSION·DEVICE 등).",
+     "why": "CAEP 1.0 §3.8 에서 이 둘이 필수이고 previous_level 은 선택, risk_reason 은 권장이다. \"이 session 위험 HIGH\" 를 다른 앱에 알리는 정식 형식이며, IP 를 싣는 정식 claim 은 없어 IP 회전 탐지는 각자 해야 한다.",
+     "hint": "원리 「대응 신호를 다른 시스템에 퍼뜨리기 — SSF·CAEP」, CAEP 1.0 Final §3.8."
+    },
+    {
+     "id": "SEC08-Q05",
+     "q": "감사 이벤트를 stdout 로그로만 SIEM 에 보내면 어떤 두 종류의 불일치가 생기나?",
+     "a": "rollback 됐는데 로그는 나간 경우와, commit 됐는데 수집기 장애로 로그가 유실된 경우.",
+     "why": "로그 stream 은 transaction 과 분리된 at-most-once 경로다. 감사 이벤트와 같은 transaction 에 outbox row 를 넣고 worker 가 at-least-once 로 보내며 받는 쪽이 event id 로 중복 제거하면 commit 된 것만 빠짐없이 나간다.",
+     "hint": "방법들 「다2 로그 stream(stdout·파일 → 수집기)」·「다3 transactional outbox → webhook(at-least-once)」."
+    },
+    {
+     "id": "SEC08-Q06",
+     "q": "Entra CAE 에서 critical event 로 다루는 것 다섯 가지와 그 대가는?",
+     "a": "사용자 삭제·비활성, 비밀번호 변경·재설정, MFA 활성, 관리자의 refresh token 전부 폐기, ID Protection 의 높은 사용자 위험 — 대가는 access token 최대 28시간과 전파 최대 15분.",
+     "why": "resource 가 critical event 를 받아 만료 전 access token 도 401 + claim challenge 로 거절할 수 있게 된 대신, CAE session 의 access token 수명이 길어지고 critical event 전파에는 시간이 걸린다(IP 위치 정책은 즉시 적용). 탐지 → 신호 → 대응이 한 제품 안에 이어진 사례다.",
+     "hint": "원리 「대응 신호를 다른 시스템에 퍼뜨리기 — SSF·CAEP」, Microsoft Entra Continuous Access Evaluation 문서."
+    },
+    {
+     "id": "SEC08-Q07",
+     "q": "한도(ReadQuota)와 탐지는 피해량 식의 어느 항을 줄이나?",
+     "a": "한도는 읽기 속도를, 탐지·자동 대응은 (탐지 지연 + 대응 지연) 시간을 줄인다.",
+     "choices": [
+      "한도 = 탐지 지연, 탐지·대응 = 읽기 속도",
+      "한도 = 읽기 속도, 탐지·대응 = 지연 시간",
+      "둘 다 읽기 속도 항만 줄인다",
+      "둘 다 지연 시간 항만 줄인다"
+     ],
+     "answerIndex": 1,
+     "why": "유출 row ≈ 읽기 속도 × (탐지 지연 + 대응 지연) 이므로 둘은 곱의 서로 다른 항이다. 대체재가 아니라 함께 써야 하며, 하루 배치 탐지 + 다음 날 사람 대응을 5분 스트림 탐지 + 자동 step-up 으로 바꾸면 피해가 크게 준다.",
+     "hint": "원리 「탐지 → 대응 시간과 피해량」, SEC06 읽기 양·속도 한도 — ReadQuota."
+    },
+    {
+     "id": "SEC08-Q08",
+     "q": "account-auth-kit 0.2 가 탐지 엔진을 넣지 않고도 E7 을 줄이는 두 가지는?",
+     "a": "① ForwardingAuditSink + outbox 전달 ② RiskResponder·POST /admin/risk-signals 대응 손잡이.",
+     "why": "① 은 감사 이벤트를 빠짐없이 SIEM 에 보내 탐지 지연을, ② 는 밖의 탐지가 grant 정지·session 폐기를 바로 부르게 해 대응 지연을 줄인다. 탐지 엔진은 데이터·조정 인력이 필요해 라이브러리 기본값으로 줄 수 없으므로 L1 은 유지한다.",
+     "hint": "「account-auth-kit 0.2 입력」 의 ①·④ 행과 명시 한계, 「이 장에서 답하는 것」 의 P7·L1."
+    },
+    {
+     "id": "SEC08-Q09",
+     "q": "호스팅 ASN 차단이 residential proxy 앞에서 약한 이유는?",
+     "a": "트래픽이 가정용 ISP 의 IP(상당수 감염 기기)에서 나오기 때문이다.",
+     "why": "Mi 외(IEEE S&P 2019)는 residential proxy 에서 약 600만 개의 residential IP 를 관찰했다. ASN \"종류\" 로는 정상과 구분되지 않으므로 짧은 창에서 바뀐 \"수\" 와 평소와의 차이를 본다.",
+     "hint": "원리 「IP 회전을 세는 법 — key 와 신호의 차이」, 방법들 「가7 위협 인텔리전스·IP 평판」, MITRE ATT&CK T1090.003."
+    },
+    {
+     "id": "SEC08-Q10",
+     "q": "OCSF 로 SIEM 에 보낼 때 로그인 성공 이벤트와 SIEM 이 낸 탐지 결과는 각각 어느 class 인가?",
+     "a": "로그인 = Authentication(class_uid 3002), 탐지 결과 = Detection Finding(2004).",
+     "choices": [
+      "로그인 = User Management 3007, 탐지 = Authentication 3002",
+      "로그인 = Authentication 3002, 탐지 = Detection Finding 2004",
+      "로그인 = Authentication 3002, 탐지 = Role Management 3008",
+      "로그인 = Detection Finding 2004, 탐지 = Authentication 3002"
+     ],
+     "answerIndex": 1,
+     "why": "3002 는 Identity & Access Management 범주로 필수 user·activity_id(1 Logon)이고 type_uid = class_uid × 100 + activity_id 라 로그인은 300201 이다. 2004 는 Findings 범주로 필수 finding_info·severity_id 를 가진다. 역할 부여·회수는 User Management 3007 로 간다.",
+     "hint": "방법들 「다4 표준 schema 로 정규화(OCSF·ECS)」, 「account-auth-kit 0.2 입력」 의 ③ 행, OCSF 1.9.0 schema."
+    }
+   ]
+  },
+  {
+   "id": "SEC09",
+   "title": "SEC09 감사 로그 무결성 — hash chain·Merkle·WORM·외부 앵커",
+   "part": "5부 기록과 규제",
+   "summary": "감사 로그를 \"고치거나 지우면 들키게\" 만드는 방법(평문·key 있는 hash chain, forward-secure MAC·aggregate 서명, Merkle transparency log, WORM, RFC 3161·공개 로그 앵커, DB ledger, TEE·전용 장치)을 공격자 등급별로 무엇을 막고 못 막는지 비교한다. 결론: chain 은 무엇이 바뀌었나만 알려 주고 끝이 잘렸나·통째로 다시 썼나는 chain 밖에 둔 tip(마지막 순번·hash)으로만 보이므로, account-auth-kit 0.2 는 tip 을 다른 관리 주체의 WORM·RFC 3161 에 주기적으로 적는 AuditAnchor port 와 prod 에서 chain 이 꺼져 있으면 경고하는 줄을 넣는 것이 가장 값싼 큰 개선이다. 정할 것 없음.",
+   "items": [
+    {
+     "id": "SEC09#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "SEC09#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "SEC09#원리",
+     "title": "원리"
+    },
+    {
+     "id": "SEC09#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "SEC09#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "SEC09#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "SEC09#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "SEC09#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "SEC09#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "SEC09#account-auth-kit 0.2 입력",
+     "title": "account-auth-kit 0.2 입력"
+    },
+    {
+     "id": "SEC09#다른 장 연결",
+     "title": "다른 장 연결"
+    }
+   ],
+   "cards": [
+    {
+     "id": "SEC09-Q01",
+     "q": "kit 0.1.2 에서 chain 을 켰을 때, 앱 서버를 장악한 공격자(T1)가 할 수 있는 것과 없는 것은?",
+     "a": "기존 감사 row 의 수정·삭제는 못 하지만, chain 끝에 정상 검증되는 가짜 event 를 덧붙일 수는 있다.",
+     "why": "앱 role 에 UPDATE·DELETE·TRUNCATE 가 없고 UPDATE trigger 가 막는다. 하지만 앱 process 가 audit key 와 INSERT 권한을 다 가지므로 덧붙인 event 도 chain 검증을 통과한다. 앵커가 있어도 \"앵커 이후 기록\" 이라는 것만 보장된다.",
+     "hint": "원리 「무결성을 \"누구로부터\" 지키나 — 공격자 등급」의 T1 행, 「현재(0.1.2) 보장 범위 — 코드 기준」."
+    },
+    {
+     "id": "SEC09-Q02",
+     "q": "HMAC chain 이 평문 SHA-256 chain 보다 나은 점과 못한 점은?",
+     "a": "나은 점은 key 없는 DB superuser 가 전체를 다시 계산할 수 없다는 것, 못한 점은 검증자가 곧 위조 가능자라 공개 검증을 못 한다는 것이다.",
+     "why": "평문 chain 은 누구나 재계산할 수 있어 앵커 없이는 거의 장식이다. HMAC 은 대칭 key 라 검증하려면 key 가 필요하고, 그 key 로 위조도 할 수 있어 외부 감사인에게 맡길 수 없다. 공개 검증에는 비대칭 서명 checkpoint 가 필요하다.",
+     "hint": "원리 「평문 hash chain vs key 있는 MAC chain vs 서명 chain」, 방법들 「M2. 평문 hash chain」·「M3. key 있는 MAC chain (kit 0.1.2)」."
+    },
+    {
+     "id": "SEC09-Q03",
+     "q": "forward security 가 막는 것과 truncation 을 못 막는 이유는?",
+     "a": "장악 시점 이전 event 의 위조는 막지만, 끝을 잘라 낸 앞부분은 옛 key 로 여전히 검증되므로 truncation 은 보이지 않는다.",
+     "why": "key 를 일방향으로 갱신하고 옛 key 를 지우므로 공격자는 과거 구간을 다시 계산할 수 없다. 하지만 \"지금 끝이 어디인가\" 라는 상태가 남아 있지 않아, 잘린 chain 도 정상으로 보인다. Ma·Tsudik 의 FssAgg 나 외부 tip 앵커가 필요하다.",
+     "hint": "원리 「forward security — 오늘 털려도 어제는 안전하게」·「truncation — forward security 로도 안 풀리는 것」, IACR ePrint 2008/185."
+    },
+    {
+     "id": "SEC09-Q04",
+     "q": "앵커를 매일 하면 남는 위험은? 어떻게 줄이나?",
+     "a": "마지막 앵커 이후 최대 하루치 event 를 흔적 없이 지울 수 있다 — 위험한 event 직후 즉시 앵커하는 사건 기반 앵커로 줄인다.",
+     "why": "탐지 창은 앵커 주기와 같다. 공격자는 보통 흔적을 남긴 직후 지우려 하므로 특권 grant·대량 내보내기·key rotation·chain 설정 변경 직후의 앵커가 가장 값지다(HARDLOG 의 criticality-aware 와 같은 발상).",
+     "hint": "방법들 「tip 을 어디에 둘까 — L6 에 대한 선택」, 원리 「기록되기 전에 지우기 — 경쟁 상태(race)」."
+    },
+    {
+     "id": "SEC09-Q05",
+     "q": "append-only trigger 가 DB superuser 를 못 막는 구체적 경로 두 가지는?",
+     "a": "ALTER TABLE … DISABLE TRIGGER 와 SET session_replication_role = replica 다.",
+     "choices": [
+      "REVOKE UPDATE 와 TRUNCATE 권한 회수",
+      "DISABLE TRIGGER 와 session_replication_role = replica",
+      "pg_advisory_xact_lock 과 VACUUM FULL",
+      "S3 governance bypass 와 delete marker"
+     ],
+     "answerIndex": 1,
+     "why": "session_replication_role 이 replica 면 기본 설정의 trigger·rule 이 발동하지 않는다. 그래서 trigger 는 앱 버그(T0) 대책이고, superuser(T2) 대책은 chain + 밖 앵커 + DB 관리 주체 분리다.",
+     "hint": "원리 「무결성을 \"누구로부터\" 지키나 — 공격자 등급」의 T2 행, 방법들 「M1. DB 권한 분리 + append-only trigger」, PostgreSQL docs session_replication_role."
+    },
+    {
+     "id": "SEC09-Q06",
+     "q": "RFC 3161 TSA 앵커가 더해 주는 것과 TSA 에 보내는 정보는?",
+     "a": "\"이 tip 은 genTime 이전에 존재했다\" 는 제3자 시각 증명(backdating 방어)을 더하고, TSA 에는 hash(messageImprint)만 보낸다.",
+     "why": "TSA 는 imprint 를 길이 외에 들여다보지 않고 genTime 을 넣어 서명한 token 만 돌려준다(RFC 3161 §2.1). TSA 는 기록을 남기지 않아도 되므로 token 은 직접(예 다른 계정 WORM bucket) 보관해야 한다.",
+     "hint": "앵커 「A3. RFC 3161 TSA」, RFC 3161 §2.1·§2.4."
+    },
+    {
+     "id": "SEC09-Q07",
+     "q": "transparency log 에서 split view 란 무엇이고 무엇으로 막나?",
+     "a": "log 운영자가 관찰자마다 다른 판을 보여 주는 공격이고, 독립 witness 의 cosign 으로 막는다.",
+     "choices": [
+      "inclusion proof 를 매번 검증해서",
+      "consistency proof 를 검증해서",
+      "독립 witness 가 같은 checkpoint 에 cosign 해서",
+      "WORM bucket 에 checkpoint 를 보관해서"
+     ],
+     "answerIndex": 2,
+     "why": "inclusion·consistency proof 는 한 관찰자가 본 판의 일관성만 보여 주므로 split view 를 막지 못한다(RFC 9162 도 인정). 독립 witness 가 consistency proof 를 검증한 뒤 같은 checkpoint 에 cosign 해야 모두가 같은 판을 본다고 믿을 수 있다.",
+     "hint": "원리 「split view 와 witness」, C2SP tlog-witness, RFC 9162."
+    },
+    {
+     "id": "SEC09-Q08",
+     "q": "Amazon QLDB 종료가 감사 로그 설계에 주는 교훈은?",
+     "a": "무결성 증거의 형식과 검증 도구를 공급사 제품에 묶지 말고, 공개 형식의 digest·tip 을 다른 저장소에 따로 보관해야 한다.",
+     "why": "Amazon QLDB 는 2025-07-31 지원을 끝냈고, 검증 도구가 공급사 제품에 묶여 있으면 그와 함께 검증 능력도 사라진다. 수출 경로 없이 관리형 ledger 에만 증거를 맡기는 것이 흔한 실수로 꼽힌다.",
+     "hint": "방법들 「M8. DB 내장 ledger (Azure SQL ledger·immudb·(종료) Amazon QLDB)」, 「위협과 흔한 실수」, 「관리형 서비스」."
+    },
+    {
+     "id": "SEC09-Q09",
+     "q": "깨진 chain 을 발견했을 때 앵커 job 이 앵커를 하면 안 되는 이유는?",
+     "a": "조작된 상태에 외부 도장을 찍으면 이후 검증이 그 앵커를 기준으로 조작된 상태를 정상으로 판정하기 때문이다.",
+     "why": "앵커는 \"이 tip 이 맞다\" 는 기준점이 된다. break 가 있으면 앵커를 멈추고 경보하며, 보존 기간 삭제도 멈춰 증거를 보존해야 한다.",
+     "hint": "직접 구현 「request → 검증 → 저장 → response 단계 (앵커 job)」·「시험 케이스 후보 (0.2)」, 「위협과 흔한 실수」."
+    },
+    {
+     "id": "SEC09-Q10",
+     "q": "kit 0.1.2 에서 감사 chain 이 기본 꺼짐(hash_chain = False)인 것의 진짜 문제는 무엇이고, 0.2 에서 추천하는 기본값은?",
+     "a": "꺼짐 자체보다 prod 에서 꺼져 있어도 아무 경고가 없다는 것이 문제이고, 0.2 는 env=prod 에서만 기본 켬 + 끄면 경고를 추천한다.",
+     "choices": [
+      "지금처럼 모든 env 기본 끔, 경고 없음",
+      "prod 에서만 기본 켬 + 끄면 경고",
+      "모든 env 기본 켬",
+      "앵커까지 모든 env 기본 켬"
+     ],
+     "answerIndex": 1,
+     "why": "warning_reasons 에 chain 끔 경고가 없어 E16 대책이 조용히 빠진 채 운영될 수 있다. 모든 env 기본 켬은 로컬·시험마다 audit key 가 필요해 개발 마찰이 크고, prod 만 켜면 운영은 보호하면서 로컬은 key 없이 동작한다(단 audit key 없던 prod 설치는 시작이 멈추므로 이전 안내 필요).",
+     "hint": "「현재(0.1.2) 보장 범위 — 코드 기준」, 「기본 켬 여부 — 선택지」, 「0.2 에 넣을 것 (추천)」 ③ prod 경고."
+    }
+   ]
+  },
+  {
+   "id": "SEC10",
+   "title": "SEC10 접속기록·열람 기록 법규",
+   "part": "5부 기록과 규제",
+   "summary": "운영자·직원이 개인정보를 본 기록(접속기록)을 국내 법규(개인정보 안전성 확보조치 기준 §2 3호·§8, 개인정보 보호법 시행령 §30, 전자금융감독규정 §13, 신용정보법 §20, ISMS-P 2.9.4~2.9.6)와 GDPR(Art.30·32·33)이 각각 무엇을 얼마나 요구하는지 원문 대조로 정리하고, 그 요구를 앱 이벤트·DB 감사·점검 workflow·보존 구조로 어떻게 채우는지 비교한다. 결론은 \"현행 고시는 접속기록 다섯 항목(식별자·일시·접속지·처리한 정보주체·수행업무)을 1년(조건부 2년) 남기고, 접속기록과 다운로드 상황의 점검 주기·방법·사후조치를 내부 관리계획으로 정해 이행하라\" 이고, account-auth-kit 0.1.2 의 data.accessed·data.exported 는 그 틀은 주지만 정보주체 목록·수행업무 세분·접속지(IP 전체)·data.* 전용 보존 하한이 비어 있어 0.2 입력으로 넘긴다. 정할 것 없음.",
+   "items": [
+    {
+     "id": "SEC10#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "SEC10#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "SEC10#원리",
+     "title": "원리"
+    },
+    {
+     "id": "SEC10#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "SEC10#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "SEC10#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "SEC10#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "SEC10#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "SEC10#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "SEC10#account-auth-kit 0.2 입력",
+     "title": "account-auth-kit 0.2 입력"
+    },
+    {
+     "id": "SEC10#다른 장 연결",
+     "title": "다른 장 연결"
+    },
+    {
+     "id": "SEC10#더 깊이",
+     "title": "더 깊이"
+    }
+   ],
+   "cards": [
+    {
+     "id": "SEC10-Q01",
+     "q": "고시 §2 3호 접속기록 다섯 항목은? 로그인 감사가 못 채우는 둘은?",
+     "a": "식별자·접속일시·접속지 정보·처리한 정보주체 정보·수행업무 — 로그인 감사는 \"처리한 정보주체 정보\" 와 \"수행업무\" 를 못 채운다.",
+     "why": "법이 요구하는 접속기록은 로그인 기록이 아니라 업무 수행 내역이다. 로그인 성공·실패만으로는 다섯 중 셋만 채워지므로 \"누구의 데이터를·무엇을 했나\" 는 데이터를 실제로 읽는 handler 가 data.* 이벤트로 남겨야 한다.",
+     "hint": "원리 「2. 접속기록 다섯 항목 — 로그인 기록과 다른 점」, 고시 §2 3호."
+    },
+    {
+     "id": "SEC10-Q02",
+     "q": "고객(LP 담당자) 본인이 포털에서 문서를 본 기록은 고시 §8 접속기록인가?",
+     "a": "아니다 — §8① 대상은 \"개인정보처리시스템에 접속한 자(다만, 정보주체는 제외)\" 다.",
+     "why": "고객 본인은 정보주체라 법정 접속기록 대상이 아니다. 고객 활동 기록은 보안·지원 같은 다른 목적의 개인정보 처리이므로 처리방침에 목적·기간을 적어야 하고, 이를 접속기록으로 착각해 직원 기록을 빠뜨리면 법정 대상이 비게 된다.",
+     "hint": "쉬운 설명의 \"개인정보취급자\" 용어, 「위협과 흔한 실수」 둘째 행, 고시 §8①."
+    },
+    {
+     "id": "SEC10-Q03",
+     "q": "2026-10-31 부터 §8② 점검에서 바뀐 점과 바뀌지 않은 점은?",
+     "a": "바뀐 점: \"월 1회 이상\" 고정 주기와 \"다운로드 사유를 반드시 확인\" 문구가 빠지고, 접속기록 및 다운로드 상황의 점검 주기·방법·사후조치절차를 내부 관리계획으로 정해 이행한다. 바뀌지 않은 점: 점검 의무 자체, 1년·2년 보관, 위·변조 방지.",
+     "why": "개정(제2025-9호) §8①②는 발령 1년 뒤 시행이라 2026-10-31 부터다. 주기 숫자는 사라졌지만 정한 주기를 지키지 않으면 \"이행\" 위반이고, 사유 확인은 의무 문구에서 처리자가 정하는 사후조치로 옮겨 갔을 뿐 실무 기본값으로는 여전히 가장 방어하기 쉽다.",
+     "hint": "원리 「4. 점검 — 옛 \"월 1회\" 에서 \"스스로 정하고 이행\" 으로」, 방법들 「B3 다운로드 사후 사유 소명」·「B4 다운로드 사전 사유 입력」, 고시 §8②·부칙."
+    },
+    {
+     "id": "SEC10-Q04",
+     "q": "접속기록 보관을 2년으로 해야 하는 세 조건은?",
+     "a": "5만 명 이상 정보주체의 개인정보 처리 시스템, 고유식별정보·민감정보 처리 시스템, 기간통신사업자.",
+     "choices": [
+      "5만 명 이상 처리·고유식별·민감정보 처리·금융회사등",
+      "5만 명 이상 처리·고유식별·민감정보 처리·기간통신사업자",
+      "1만 명 이상 처리·민감정보 처리·기간통신사업자",
+      "5만 명 이상 처리·권한 내역 보관·ISMS-P 인증 대상"
+     ],
+     "answerIndex": 1,
+     "why": "고시 §8① 은 1년 이상이 기본이고 단서로 이 세 경우만 2년 이상이다. 권한 부여·변경·말소 내역 3년(§5③)은 접속기록과 별개 기록이라 섞으면 안 된다.",
+     "hint": "원리 「3. 보관 기간 — \"최소\" 와 \"최대\" 가 동시에 걸린다」, 고시 §8① 단서·§5③."
+    },
+    {
+     "id": "SEC10-Q05",
+     "q": "전자금융거래법의 \"접속기록\" 과 개인정보 고시의 \"접속기록\" 은 주체가 어떻게 다른가?",
+     "a": "전자금융거래법은 고객(이용자)이 거래를 위해 접속한 기록, 개인정보 고시는 정보주체를 제외한 처리자 쪽 접속자의 기록이다.",
+     "choices": [
+      "둘 다 직원 접속이고 보관 기간만 다르다",
+      "전자금융은 고객 거래 접속, 개인정보 고시는 정보주체를 뺀 접속자",
+      "전자금융은 직원 접속, 개인정보 고시는 고객 접속",
+      "둘 다 고객 접속이고 항목 수만 다르다"
+     ],
+     "answerIndex": 1,
+     "why": "전자금융거래법 시행령 §12①1나 는 전자금융거래와 관련한 전자적 장치의 접속기록을 5년 보존하게 한다. 개인정보 고시 §8① 은 정보주체를 제외한 접속자를 대상으로 한다 — 같은 낱말, 정반대 주체다.",
+     "hint": "원리 「5. 금융 업권 — 같은 \"접속기록\" 이 다른 뜻」, 원리 「8. 다섯 법규 한눈에」의 기록 주체 행."
+    },
+    {
+     "id": "SEC10-Q06",
+     "q": "GDPR Art.30 이 요구하는 것은 접속 로그인가?",
+     "a": "아니다 — 처리 활동 기록(목적·범주·수령인·삭제 기한·보안 조치 설명)이다.",
+     "choices": [
+      "직원별 접속 로그를 1년 이상 보관하라는 의무",
+      "목적·범주·수령인·삭제 기한 등을 담은 처리 활동 목록",
+      "침해가 생겼을 때 72시간 안에 내는 신고서",
+      "정보주체가 요청할 때 주는 열람 내역"
+     ],
+     "answerIndex": 1,
+     "why": "Art.30 은 개별 접속 로그가 아니라 처리 활동 목록이다. 접속 로그는 Art.32 보안 조치와 Art.33(5) 침해 문서화·Art.5(2) 책임(accountability)을 증명하는 수단이고, GDPR 은 기간 숫자 대신 너무 오래 남기는 쪽(Art.5(1)(e))을 견제한다.",
+     "hint": "원리 「7. GDPR — 기간 숫자는 없고 책임(accountability)이 있다」, GDPR Art.30·32·33(5)."
+    },
+    {
+     "id": "SEC10-Q07",
+     "q": "유출이 났을 때 접속기록·점검 증적이 과징금과 어떻게 이어지나?",
+     "a": "법 §64의2①9 과징금은 \"§29 에 따른 안전성 확보에 필요한 조치를 다한 경우\" 를 빼 주므로, 접속기록 보관과 정한 대로 점검한 기록이 \"다했다\" 의 증거가 된다.",
+     "why": "법 §29 가 접속기록 보관을 법률 문장에 직접 적어 위반은 안전조치의무 위반으로 이어진다. 정해 놓고 점검하지 않으면 \"조치를 다함\" 을 주장할 수 없다.",
+     "hint": "원리 「1. 법 구조 — 법률 → 시행령 → 고시 → 내부 관리계획」, 「위협과 흔한 실수」 \"정해 놓고 안 함\" 행, 개인정보 보호법 §64의2①9."
+    },
+    {
+     "id": "SEC10-Q08",
+     "q": "account-auth-kit 0.1.2 에서 data.exported 를 2년 보관 대상 시스템에 쓰면 생길 수 있는 실수는?",
+     "a": "운영자가 data.* 를 activity(365) 기간으로 purge 하면 2년(730일) 하한 위반이 된다.",
+     "why": "0.1.2 에는 이벤트 이름 → 보존 kind 대응이 코드에 없고 purge 는 호출자가 이벤트 이름을 넘기며, 하한은 auth·privilege 에만 걸려 있다. 0.2 입력 ① 의 access kind 와 하한 검사가 이를 막는다.",
+     "hint": "「account-auth-kit 0.2 입력」 ①, 방법들 「C2 이벤트 종류(kind)별 기간 + 파티션 삭제」, 「흔한 버그」의 보존 job 하드코딩 항목."
+    },
+    {
+     "id": "SEC10-Q09",
+     "q": "staff 접속기록에 전체 IP 를 남기는 것이 개인정보 최소화와 덜 충돌하는 이유는?",
+     "a": "접속기록의 주체가 정보주체가 아닌 직원이고, 고시가 \"접속지 정보\" 를 항목으로 요구하며, §6①2 가 접속 IP 분석으로 유출 시도를 탐지하라고 하기 때문이다.",
+     "why": "전체 IP 는 고객 이벤트에 쓰면 과다 수집이지만, 법정 대상인 직원 쪽 data.* 에서는 법 요건을 그대로 채운다. 그래서 staff realm 은 전체 IP, customer realm 은 prefix 로 나눈다.",
+     "hint": "방법들 「A5 접속지 정보 — 전체 IP vs prefix」, 「account-auth-kit 0.2 입력」 ②, 고시 §2 3호·§6①2."
+    },
+    {
+     "id": "SEC10-Q10",
+     "q": "반출 통제·감사 로그 무결성 구현·점검 자동화 가운데 이 장이 정하는 몫은 무엇이고, 나머지는 어디서 다루나?",
+     "a": "이 장은 반출·열람의 기록 항목과 법이 요구하는 수준만 정한다 — 반출 통제는 SEC07, 위·변조 방지 구현은 SEC09, 점검 자동화는 기록을 AuditSink(P7)로 SIEM 에 보내고 ReadQuota(P6)와 같은 count 를 쓰는 것으로 잇는다.",
+     "why": "내보내기 승인·워터마크·마스킹은 앱의 통제 몫이고, 고시 §8③ \"위·변조 및 도난, 분실되지 않도록 안전하게 보관\" 의 구현 수단(hash chain·WORM 등)은 무결성 장의 몫이다. 점검(§8②)을 자동화하려면 기록이 SIEM 으로 나가야 하고, 기록된 count 가 한도와 같은 값이어야 규칙 기반 경보가 맞는다.",
+     "hint": "「이 장에서 답하는 것」 L4·L6·P6·P7 행, 「account-auth-kit 0.2 입력」 ⑦·⑧, 방법들 「B2 규칙 기반 자동 경보」."
+    }
+   ]
+  },
+  {
+   "id": "SEC11",
+   "title": "SEC11 내부자 공모와 미끼 데이터 — SoD·2인 원칙·honeytoken",
+   "part": "5부 기록과 규제",
+   "summary": "정상 권한을 가진 사람이 자료를 넘기거나(대조 표 E15) 둘 이상이 짜고 통제를 우회할 때, 무엇으로 비용을 올리고 무엇으로 알아채는지를 다룬다. 결론: SoD·2인 원칙은 \"한 사람 단독\" 을 막을 뿐 공모는 못 막으므로 승인자 배정·순환·기록으로 공모 비용을 올리고, 미끼 데이터(honeytoken)는 강한 신호지만 AUT42 의 「오탐이 거의 없다」 는 배치·트리거 설계가 맞을 때만 성립한다(백업·검색 index·보안 스캐너·내보내기 job 이 미끼를 건드림). account-auth-kit 0.2 에는 미끼 표시 port 와 미끼 접근 감사 이벤트 hook 을 후보로 넣고, 탐지 엔진·인사 연계는 명시 한계로 둔다 — 정할 것 없음.",
+   "items": [
+    {
+     "id": "SEC11#이 장에서 답하는 것",
+     "title": "이 장에서 답하는 것"
+    },
+    {
+     "id": "SEC11#쉬운 설명",
+     "title": "쉬운 설명"
+    },
+    {
+     "id": "SEC11#원리",
+     "title": "원리"
+    },
+    {
+     "id": "SEC11#방법들",
+     "title": "방법들"
+    },
+    {
+     "id": "SEC11#표준·논문",
+     "title": "표준·논문"
+    },
+    {
+     "id": "SEC11#오픈소스 프로젝트",
+     "title": "오픈소스 프로젝트"
+    },
+    {
+     "id": "SEC11#관리형 서비스",
+     "title": "관리형 서비스"
+    },
+    {
+     "id": "SEC11#직접 구현",
+     "title": "직접 구현"
+    },
+    {
+     "id": "SEC11#위협과 흔한 실수",
+     "title": "위협과 흔한 실수"
+    },
+    {
+     "id": "SEC11#사례",
+     "title": "사례"
+    },
+    {
+     "id": "SEC11#account-auth-kit 0.2 입력",
+     "title": "account-auth-kit 0.2 입력"
+    },
+    {
+     "id": "SEC11#다른 장 연결",
+     "title": "다른 장 연결"
+    },
+    {
+     "id": "SEC11#더 깊이",
+     "title": "더 깊이"
+    }
+   ],
+   "cards": [
+    {
+     "id": "SEC11-Q01",
+     "q": "2인 승인이 있는데 왜 E15 는 여전히 \"못 막음\" 인가?",
+     "a": "2인 원칙은 단독 악행만 막고, 공모 2인과 정상 권한 안의 열람 반출은 예방하지 못하기 때문이다.",
+     "why": "공모 2인은 각자 정상 권한으로 한 단계씩 하므로 승인을 통과하고, 읽기(열람)는 애초에 실행 전 승인을 끼우기 어렵다. 그래서 판정은 그대로 두고 탐지(미끼)·조사 준비(기록·짝 분석)를 더한다.",
+     "hint": "원리 「SoD 가 막는 것과 못 막는 것」·「2인 원칙의 세 가지 판」, 「이 장에서 답하는 것」 E15 행."
+    },
+    {
+     "id": "SEC11-Q02",
+     "q": "AUT42 의 「미끼는 오탐이 거의 없다」 를 어떻게 고쳐 써야 하나?",
+     "a": "\"사람이 볼 일이 없는 곳에 두고 기계 동선을 트리거에서 빼거나 표시하면 오탐이 낮다\" 로 조건을 붙인다.",
+     "why": "원저자 주장은 사람 동선만 가정했고, 백업·검색 index·secret scanner·URL 스캐너·승인된 대량 job 같은 기계 동선은 미끼를 건드린다. GitHub secret scanning 이 Canarytoken 을 시험해 경보가 나는 것이 확인된 예다.",
+     "hint": "원리 「미끼 경보의 오탐·미탐 분해 — 「오탐이 거의 없다」 바로잡기」, Spitzner 2003 「Honeytokens: The Other Honeypot」."
+    },
+    {
+     "id": "SEC11-Q03",
+     "q": "미끼 표시를 tenant.is_decoy column 으로 두면 안 되는 이유는?",
+     "a": "그 table 을 읽을 수 있는 내부자가 미끼를 알아보고 피하기 때문이다.",
+     "why": "업무 쿼리가 미끼를 걸러내면 아무도 미끼를 안 건드려 탐지가 0 이 된다. 미끼 표시는 별도 schema 에 두고, \"주어진 id 중 미끼인 것만\" 돌려주는 함수만 업무 role 에 준다.",
+     "hint": "원리 「미끼 경보의 오탐·미탐 분해」의 미끼 위치 노출, 직접 구현 「데이터 모델 (table·column)」."
+    },
+    {
+     "id": "SEC11-Q04",
+     "q": "미끼를 건드린 request 에 403 을 주면 왜 나쁜가?",
+     "a": "공격자에게 \"이건 미끼\" 라고 알려 주기 때문이다.",
+     "choices": [
+      "403 을 주고 경보도 낸다",
+      "응답은 평소와 같게 주고 경보만 낸다",
+      "404 를 주어 없는 데이터처럼 보인다",
+      "session 을 즉시 끊고 경보를 낸다"
+     ],
+     "answerIndex": 1,
+     "why": "응답은 미끼가 없을 때와 똑같이 주고 경보만 낸다. 차단은 사람이 경보를 보고 되돌리기 쉬운 것(grant 정지)부터 판단한다.",
+     "hint": "원리 「미끼 데이터의 탐지 원리」 sequence 그림의 마지막 단계, AUT42 「D5 대응 연결 — 경보·SIEM·자동 대응」."
+    },
+    {
+     "id": "SEC11-Q05",
+     "q": "승인자 무작위 배정이 공모를 어떻게 어렵게 하나? 언제 효과가 없나?",
+     "a": "요청자가 짠 상대를 승인자로 고를 수 없어 짠 상대가 걸릴 확률이 약 1/풀 크기로 준다. 풀이 2~3명이면 효과가 없다.",
+     "why": "\"승인자 ≠ 요청자\" 만으로는 미리 짠 2인에 뚫린다. 풀이 작으면 거의 같은 짝이 되므로 그때는 동시 입회(A4)나 짝 분석(C2)으로 대신한다. kit 0.2 에는 ApproverAssigner port 로만 넣는다(P5).",
+     "hint": "방법들 「A5 승인자 무작위·순번 배정과 순환」·「C2 승인 짝 기록과 짝 반복 분석」, NIST SP 800-53 AC-3(2)."
+    },
+    {
+     "id": "SEC11-Q06",
+     "q": "SC-26 Decoys 와 SI-20 Tainting 은 무엇이 다른가?",
+     "a": "SC-26 은 시스템 안에서 미끼가 건드려진 순간을, SI-20 은 데이터가 밖에서 쓰인 순간을 잡는다.",
+     "choices": [
+      "SC-26 은 밖에서 쓰인 순간, SI-20 은 안에서 건드린 순간",
+      "SC-26 은 안에서 건드린 순간, SI-20 은 밖에서 쓰인 순간",
+      "둘 다 안에서 건드린 순간이고 SI-20 은 자동 차단",
+      "둘 다 밖에서 쓰인 순간이고 SC-26 은 문서 전용"
+     ],
+     "answerIndex": 1,
+     "why": "SI-20 의 예는 가짜 email 로 오는 mail, 데이터가 \"call home\" 하는 능동 tainting 이다. 정상 권한 내부자의 반출은 안쪽 신호가 약하므로 바깥 신호(사람별 지문)가 유출 확정과 출처 특정에 필요하다.",
+     "hint": "원리 「미끼 데이터의 탐지 원리」, NIST SP 800-53 SC-26·SI-20."
+    },
+    {
+     "id": "SEC11-Q07",
+     "q": "Coinbase 2025 사건에서 미끼가 약했던 이유는?",
+     "a": "매수된 지원 담당자가 자기 업무 화면에서 고객을 한 명씩 보는 표적 단건 열람이었기 때문이다.",
+     "why": "미끼는 훑기에 강하고 표적 열람에 약하다. 이런 경우에는 담당 범위 밖 열람 거부, 열람 사유, 고객별 열람 빈도 분석이 더 맞다.",
+     "hint": "원리 「미끼 경보의 오탐·미탐 분해」의 미탐 쪽, 방법들 「A7 담당 범위 기반 열람 제한(need-to-know + break-the-glass)」."
+    },
+    {
+     "id": "SEC11-Q08",
+     "q": "account-auth-kit 이 0.1.2 에서 이미 하는 SoD 는 어디까지인가?",
+     "a": "같은 요청의 요청자 ≠ 승인자만 강제하고, 승인자 배정·순환·정족수는 없다.",
+     "why": "코드(domain.py:488-490, approval.py:324-325)와 DB CHECK(tables.py:487-488)로 self-approval 을 막지만, change_request.approve 권한이 있는 staff 아무나 1명이 승인한다.",
+     "hint": "「account-auth-kit 0.2 입력」의 현재 이미 있는 것."
+    },
+    {
+     "id": "SEC11-Q09",
+     "q": "미끼 접근 hook 은 이상 탐지 엔진인가? 미끼 경보 전달과 사람별 지문은 각각 누구 몫인가?",
+     "a": "이상 탐지 엔진이 아니라 결정적 일치 검사다. 경보는 AuditSink adapter 가 우선 전달하고, 사람별 지문은 앱 몫이다.",
+     "why": "hook 은 주어진 id 가 미끼 목록에 있는지만 물으므로 L1(이상 탐지 엔진 없음)은 그대로 둔다. 미끼 이벤트는 일반 감사보다 빨리 사람에게 가야 해 batch 를 기다리지 않는다(P7). 사람별 지문(canary row·tainting)은 내보내기 데이터 모델의 일이라 kit 는 기록 형식만 준다(L4).",
+     "hint": "「이 장에서 답하는 것」 P7·L1·L4 행, 「account-auth-kit 0.2 입력」, 방법들 「B4 사람별 지문(canary trap·tainting row)」."
+    },
+    {
+     "id": "SEC11-Q10",
+     "q": "2인 원칙의 세 가지 판 중 읽기(열람)에도 걸 수 있는 것은?",
+     "a": "동시 입회(dual presence)형이다.",
+     "choices": [
+      "사전 승인(maker-checker)",
+      "동시 입회(dual presence)",
+      "지식 분할(split knowledge)",
+      "N-of-M 정족수 승인"
+     ],
+     "answerIndex": 1,
+     "why": "사전 승인(maker-checker)은 실행 전에 끼우는 것이라 업무 화면 열람마다 걸면 업무가 멈추고, 지식 분할은 키처럼 합쳐야 쓰는 것에만 맞아 화면에 보이는 데이터는 나눌 수 없다. 동시 입회는 비싸지만 session 을 실시간으로 함께 보므로 읽기에도 걸린다.",
+     "hint": "원리 「2인 원칙의 세 가지 판」, 방법들 「A4 동시 입회형 2인(live dual control)」."
+    }
+   ]
+  }
+ ]
+}

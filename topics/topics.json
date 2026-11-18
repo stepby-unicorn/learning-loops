@@ -17,6 +17,15 @@
       "chapters": 42,
       "items": 496,
       "cards": 379
+    },
+    {
+      "id": "account-auth-security",
+      "key": "SEC",
+      "title": "계정·인증 보안",
+      "summary": "로그인 뒤 특권 계정의 탈취·남용 방어 — MFA·session 바인딩·JIT·ReadQuota·반출 통제·이상 탐지·감사 로그·법규를 장마다 읽고 테스트",
+      "chapters": 11,
+      "items": 132,
+      "cards": 110
     }
   ]
 }
