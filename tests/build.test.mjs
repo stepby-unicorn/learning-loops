@@ -1,6 +1,6 @@
 // 변환기 규칙 시험: node tests/build.test.mjs
 import assert from "node:assert/strict";
-import { parseToc, parseQuestions, buildChapter, findDenied, findSecrets, dropVaultCodes, applyReplace } from "../tools/build_topic_from_obsidian_notes.mjs";
+import { parseToc, parseQuestions, buildChapter, findDenied, findSecrets, dropVaultCodes, applyReplace, parseSchedule, exampleIpEnabled } from "../tools/build_topic_from_obsidian_notes.mjs";
 
 let n = 0;
 const t = (name, fn) => { fn(); n++; console.log(`ok ${n} ${name}`); };
@@ -88,5 +88,31 @@ t("pages_replace 로 바꾼 절 제목은 항목 ID 와 화면 제목에 같이 
   const ch = buildChapter(md, "AUT01", []);
   assert.deepEqual([ch.items[0].id, ch.items[0].title], ["AUT01#투자자 포털 적용", "투자자 포털 적용"]);
   assert.ok(!ch.items[0].html.includes("LP 포털"));
+});
+t("--allow-example-ip 0·false·값 없음은 끔, 1·true 와 앞머리 true 만 켬", () => {
+  assert.equal(exampleIpEnabled({}, { "allow-example-ip": "0" }), false);
+  assert.equal(exampleIpEnabled({}, { "allow-example-ip": "false" }), false);
+  assert.equal(exampleIpEnabled({}, {}), false);
+  assert.equal(exampleIpEnabled({ pages_allow_example_ip: "false" }, {}), false);
+  assert.equal(exampleIpEnabled({}, { "allow-example-ip": "1" }), true);
+  assert.equal(exampleIpEnabled({}, { "allow-example-ip": "true" }), true);
+  assert.equal(exampleIpEnabled({ pages_allow_example_ip: "true" }, {}), true);
+});
+t("학습 일정 절 → [{date, chapters}] — 요일로 연도, 목차에 없는 장·장 없는 줄은 뺌", () => {
+  const body = "# 주제\n## 학습 일정\n설명 문단 11/19 은 줄이 아님\n- [ ] 11/19(목) — AUT01 · AUT02\n- [x] 11/20(금) — [[AUT03 암호|AUT03]] · AUT04 + [[2611 대조 표]]\n- [ ] 11/23(월) — AUT99\n- 2027-01-04 — AUT05\n## 목차\n- 12/01 — AUT06\n";
+  const ids = new Set(["AUT01", "AUT02", "AUT03", "AUT04", "AUT05", "AUT06"]);
+  // 기준 시각이 다음 해여도 요일이 맞는 해(2026)를 고른다
+  assert.deepEqual(parseSchedule(body, "AUT", ids, new Date(2027, 1, 1)), [
+    { date: "2026-11-19", chapters: ["AUT01", "AUT02"] },
+    { date: "2026-11-20", chapters: ["AUT03", "AUT04"] },
+    { date: "2027-01-04", chapters: ["AUT05"] },
+  ]);
+});
+t("학습 일정 — 요일이 없으면 기준 해, 달이 줄면 다음 해 · 절이 없으면 빈 목록 · 요일이 틀리거나 없는 날이면 오류", () => {
+  const body = "## 학습 일정\n- 12/30 — NET01\n- 01/02 — NET02\n";
+  assert.deepEqual(parseSchedule(body, "NET", null, new Date(2026, 10, 18)).map((e) => e.date), ["2026-12-30", "2027-01-02"]);
+  assert.deepEqual(parseSchedule("# x\n## 목차\n- [[NET01 a]]\n", "NET"), []);
+  assert.throws(() => parseSchedule("## 학습 일정\n- 11/19(일) — NET01\n", "NET", null, new Date(2026, 10, 18)), /요일이 맞는 해/);
+  assert.throws(() => parseSchedule("## 학습 일정\n- 02/30 — NET01\n", "NET", null, new Date(2026, 10, 18)), /없는 날/);
 });
 console.log(`${n}/${n} 통과`);

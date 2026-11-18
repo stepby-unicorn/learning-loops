@@ -18,6 +18,8 @@
 //     옛 꼴 `> [!question]- 1. 질문` 은 순서대로 <장>-Q01 로 읽는다
 //   - 선택지 문항 = callout 안 `선택지: 보기 | **정답 보기** | 보기` 줄 — 굵게 한 보기 하나가 정답이고 사이트가 자동 채점한다.
 //     굵은 보기가 하나가 아니면 exit 1
+//   - 입구 `## 학습 일정` 의 날짜 목록 줄(`- [ ] 11/19(목) — AUT01 · AUT02`, `- 2026-11-19 — AUT01` 도 됨) → index.json `schedule: [{ date, chapters }]`.
+//     절이 없거나 날짜 줄이 없으면 schedule 을 넣지 않는다. 연도 없는 날짜는 앞 줄 해 ±1 안에서 요일이 맞는 해(요일이 없으면 앞 줄 해, 달이 줄면 다음 해)
 //   - 출력에 비밀값 꼴(SECRET_PATTERNS — 키·토큰·개인 키·IP·AWS 계정 번호·내부 URL)이나
 //     금지어 파일(줄마다 한 단어, # 은 설명)의 말이 있으면 쓰지 않고 exit 1
 import fs from "node:fs";
@@ -84,6 +86,47 @@ export function parseToc(body, key) {
     if (m && !out.some((c) => c.id === m[1])) out.push({ id: m[1], file: (m[1] + m[2]).trim(), part });
   }
   return out;
+}
+
+// 입구 `## 학습 일정` → [{ date: "YYYY-MM-DD", chapters: [장 ID…] }]. 줄 = 목록 줄 하나에 날짜 하나 + 장 ID 여럿(목차에 있는 장만).
+// 체크 상자(완료 표시)는 읽지 않는다 — 사이트는 자기 진행 상태로 밀림을 센다. ref = 연도 없는 날짜의 기준 시각
+const WEEKDAY = "일월화수목금토";
+export function parseSchedule(body, key, chapterIds = null, ref = new Date()) {
+  const sec = splitSections(body).find((s) => s.title === "학습 일정");
+  if (!sec) return [];
+  const out = [];
+  const idRe = new RegExp(`(?<![A-Za-z])${key}\\d{2}(?!\\d)`, "g");
+  const p2 = (n) => String(n).padStart(2, "0");
+  let year = ref.getFullYear();
+  let prev = null;
+  for (const line of sec.lines) {
+    const m = line.match(/^\s*[-*]\s+(?:\[[ xX]\]\s+)?(?:(\d{4})-(\d{1,2})-(\d{1,2})|(\d{1,2})\/(\d{1,2}))(?:\s*\(([일월화수목금토])\))?(.*)$/);
+    if (!m) continue;
+    const month = Number(m[2] || m[4]);
+    const day = Number(m[3] || m[5]);
+    if (month < 1 || month > 12 || day < 1 || day > 31) throw new Error(`학습 일정 날짜가 잘못됐습니다: ${line.trim()}`);
+    let y = Number(m[1]);
+    if (!y) {
+      y = prev && (month < prev.month || (month === prev.month && day < prev.day)) ? year + 1 : year;
+      if (m[6]) {
+        const fits = [0, 1, -1].map((d) => y + d).find((c) => new Date(c, month - 1, day).getDay() === WEEKDAY.indexOf(m[6]));
+        if (!fits) throw new Error(`학습 일정 요일이 맞는 해가 없습니다: ${line.trim()}`);
+        y = fits;
+      }
+    }
+    if (new Date(y, month - 1, day).getDate() !== day) throw new Error(`학습 일정 날짜가 없는 날입니다: ${line.trim()}`);
+    const chapters = [...new Set(m[7].match(idRe) || [])].filter((id) => !chapterIds || chapterIds.has(id));
+    year = y;
+    prev = { month, day };
+    if (chapters.length) out.push({ date: `${y}-${p2(month)}-${p2(day)}`, chapters });
+  }
+  return out;
+}
+
+// --allow-example-ip 1·true 만 켠다(0·false·값 없음은 끔). 입구 노트 앞머리 pages_allow_example_ip: true 도 켠다
+const ON = new Set(["1", "true", "yes", "on"]);
+export function exampleIpEnabled(fm, args) {
+  return String(fm.pages_allow_example_ip).toLowerCase() === "true" || ON.has(String(args["allow-example-ip"] ?? "").trim().toLowerCase());
 }
 
 // 문항 callout 하나의 답 → { a, why, hint }
@@ -258,6 +301,8 @@ function main() {
   const title = args.title || (body.match(/^# (.+)$/m)?.[1] || slug).trim();
   const summary = args.summary || fm.learning_summary || "";
   const index = { id: slug, key, title, summary, chapters: [] };
+  const schedule = parseSchedule(body, key, chapterIds);
+  if (schedule.length) index.schedule = schedule;
   const bodies = [];
   const missing = [];
   for (const c of toc) {
@@ -271,7 +316,7 @@ function main() {
   const outDir = path.join(args.out || "topics", slug);
   const outputs = [[path.join(outDir, "index.json"), JSON.stringify(index, null, 1)], ...bodies.map((b) => [path.join(outDir, `${b.id}.json`), JSON.stringify(b)])];
   const denied = [...readDeny(args["deny-file"]), ...Object.keys(replace)];
-  const exampleIp = String(fm.pages_allow_example_ip) === "true" || Boolean(args["allow-example-ip"]);
+  const exampleIp = exampleIpEnabled(fm, args);
   const hits = [];
   for (const [file, text] of outputs) {
     for (const w of findDenied(text, denied)) hits.push(`${path.basename(file)}: 금지어 ${w}`);
@@ -283,6 +328,7 @@ function main() {
     items: index.chapters.reduce((n, c) => n + c.items.length, 0),
     cards: index.chapters.reduce((n, c) => n + c.cards.length, 0),
     noCards: index.chapters.filter((c) => !c.cards.length).map((c) => c.id),
+    schedule: schedule.length,
     excluded: exclude, renamed: rename, replaced: replace, denied: hits.length,
   };
   if (hits.length) {
