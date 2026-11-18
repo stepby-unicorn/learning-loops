@@ -5604,5 +5604,154 @@
     }
    ]
   }
+ ],
+ "schedule": [
+  {
+   "date": "2026-11-19",
+   "chapters": [
+    "AUT01",
+    "AUT02"
+   ]
+  },
+  {
+   "date": "2026-11-20",
+   "chapters": [
+    "AUT03",
+    "AUT04"
+   ]
+  },
+  {
+   "date": "2026-11-23",
+   "chapters": [
+    "AUT05",
+    "AUT06"
+   ]
+  },
+  {
+   "date": "2026-11-24",
+   "chapters": [
+    "AUT07",
+    "AUT08"
+   ]
+  },
+  {
+   "date": "2026-11-25",
+   "chapters": [
+    "AUT09",
+    "AUT10"
+   ]
+  },
+  {
+   "date": "2026-11-26",
+   "chapters": [
+    "AUT11",
+    "AUT12"
+   ]
+  },
+  {
+   "date": "2026-11-27",
+   "chapters": [
+    "AUT13",
+    "AUT14"
+   ]
+  },
+  {
+   "date": "2026-11-30",
+   "chapters": [
+    "AUT15",
+    "AUT16"
+   ]
+  },
+  {
+   "date": "2026-12-01",
+   "chapters": [
+    "AUT17",
+    "AUT18"
+   ]
+  },
+  {
+   "date": "2026-12-02",
+   "chapters": [
+    "AUT19",
+    "AUT20"
+   ]
+  },
+  {
+   "date": "2026-12-03",
+   "chapters": [
+    "AUT21",
+    "AUT41"
+   ]
+  },
+  {
+   "date": "2026-12-04",
+   "chapters": [
+    "AUT37",
+    "AUT42"
+   ]
+  },
+  {
+   "date": "2026-12-07",
+   "chapters": [
+    "AUT22",
+    "AUT23"
+   ]
+  },
+  {
+   "date": "2026-12-08",
+   "chapters": [
+    "AUT24",
+    "AUT25"
+   ]
+  },
+  {
+   "date": "2026-12-09",
+   "chapters": [
+    "AUT26",
+    "AUT27"
+   ]
+  },
+  {
+   "date": "2026-12-10",
+   "chapters": [
+    "AUT28",
+    "AUT29"
+   ]
+  },
+  {
+   "date": "2026-12-11",
+   "chapters": [
+    "AUT30",
+    "AUT31"
+   ]
+  },
+  {
+   "date": "2026-12-14",
+   "chapters": [
+    "AUT32",
+    "AUT33"
+   ]
+  },
+  {
+   "date": "2026-12-15",
+   "chapters": [
+    "AUT34",
+    "AUT35"
+   ]
+  },
+  {
+   "date": "2026-12-16",
+   "chapters": [
+    "AUT36",
+    "AUT38"
+   ]
+  },
+  {
+   "date": "2026-12-17",
+   "chapters": [
+    "AUT39",
+    "AUT40"
+   ]
+  }
  ]
 }
