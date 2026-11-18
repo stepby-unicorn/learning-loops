@@ -29,12 +29,13 @@ import { markdownToHtml, setWikiResolver } from "./markdown_to_html.mjs";
 const NOT_ITEM = ["검수", "출처", "이해 확인 질문"];
 const QUESTION_SECTION = "이해 확인 질문";
 
-function parseArgs(argv) {
+// 다음 인자가 `--` 로 시작하면 값 없음("")으로 본다 — `--allow-example-ip --dry-run` 의 --dry-run 을 값으로 먹지 않게
+export function parseArgs(argv) {
   const args = { _: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--dry-run") args.dryRun = true;
-    else if (a.startsWith("--")) args[a.slice(2)] = argv[++i];
+    else if (a.startsWith("--")) args[a.slice(2)] = i + 1 < argv.length && !argv[i + 1].startsWith("--") ? argv[++i] : "";
     else args._.push(a);
   }
   return args;
@@ -107,11 +108,13 @@ export function parseSchedule(body, key, chapterIds = null, ref = new Date()) {
     if (month < 1 || month > 12 || day < 1 || day > 31) throw new Error(`학습 일정 날짜가 잘못됐습니다: ${line.trim()}`);
     let y = Number(m[1]);
     if (!y) {
-      y = prev && (month < prev.month || (month === prev.month && day < prev.day)) ? year + 1 : year;
-      if (m[6]) {
-        const fits = [0, 1, -1].map((d) => y + d).find((c) => new Date(c, month - 1, day).getDay() === WEEKDAY.indexOf(m[6]));
-        if (!fits) throw new Error(`학습 일정 요일이 맞는 해가 없습니다: ${line.trim()}`);
-        y = fits;
+      if (prev) y = month < prev.month || (month === prev.month && day < prev.day) ? year + 1 : year;
+      // 첫 줄에 요일이 있으면 기준 시각에 가장 가까운 해 — 해가 바뀐 뒤 다시 빌드해도 같은 해가 나온다
+      else if (m[6]) y = [year - 1, year, year + 1].reduce((a, c) => (Math.abs(new Date(c, month - 1, day) - ref) < Math.abs(new Date(a, month - 1, day) - ref) ? c : a));
+      else y = year;
+      // 요일이 계산한 해와 안 맞으면 다른 해로 옮기지 않고 멈춘다(요일 오타가 1년 밀림으로 보이지 않게)
+      if (m[6] && new Date(y, month - 1, day).getDay() !== WEEKDAY.indexOf(m[6])) {
+        throw new Error(`학습 일정 요일이 맞는 해가 없습니다(${y}-${p2(month)}-${p2(day)} 은 ${WEEKDAY[new Date(y, month - 1, day).getDay()]}요일): ${line.trim()}`);
       }
     }
     if (new Date(y, month - 1, day).getDate() !== day) throw new Error(`학습 일정 날짜가 없는 날입니다: ${line.trim()}`);

@@ -1,6 +1,6 @@
 // 변환기 규칙 시험: node tests/build.test.mjs
 import assert from "node:assert/strict";
-import { parseToc, parseQuestions, buildChapter, findDenied, findSecrets, dropVaultCodes, applyReplace, parseSchedule, exampleIpEnabled } from "../tools/build_topic_from_obsidian_notes.mjs";
+import { parseToc, parseQuestions, buildChapter, findDenied, findSecrets, dropVaultCodes, applyReplace, parseSchedule, exampleIpEnabled, parseArgs } from "../tools/build_topic_from_obsidian_notes.mjs";
 
 let n = 0;
 const t = (name, fn) => { fn(); n++; console.log(`ok ${n} ${name}`); };
@@ -97,11 +97,18 @@ t("--allow-example-ip 0·false·값 없음은 끔, 1·true 와 앞머리 true �
   assert.equal(exampleIpEnabled({}, { "allow-example-ip": "1" }), true);
   assert.equal(exampleIpEnabled({}, { "allow-example-ip": "true" }), true);
   assert.equal(exampleIpEnabled({ pages_allow_example_ip: "true" }, {}), true);
+  // 값 자리에 다음 옵션이 오면 값 없음(끔) — --dry-run 은 그대로 켜진다
+  const a = parseArgs(["entry.md", "--allow-example-ip", "--dry-run", "--key", "AUT"]);
+  assert.equal(a.dryRun, true);
+  assert.equal(a.key, "AUT");
+  assert.deepEqual(a._, ["entry.md"]);
+  assert.equal(exampleIpEnabled({}, a), false);
+  assert.equal(exampleIpEnabled({}, parseArgs(["--allow-example-ip", "1", "--dry-run"])), true);
 });
 t("학습 일정 절 → [{date, chapters}] — 요일로 연도, 목차에 없는 장·장 없는 줄은 뺌", () => {
   const body = "# 주제\n## 학습 일정\n설명 문단 11/19 은 줄이 아님\n- [ ] 11/19(목) — AUT01 · AUT02\n- [x] 11/20(금) — [[AUT03 암호|AUT03]] · AUT04 + [[2611 대조 표]]\n- [ ] 11/23(월) — AUT99\n- 2027-01-04 — AUT05\n## 목차\n- 12/01 — AUT06\n";
   const ids = new Set(["AUT01", "AUT02", "AUT03", "AUT04", "AUT05", "AUT06"]);
-  // 기준 시각이 다음 해여도 요일이 맞는 해(2026)를 고른다
+  // 기준 시각이 다음 해여도 첫 줄은 기준 시각에 가장 가까운 해(2026) — 요일도 그 해와 맞는다
   assert.deepEqual(parseSchedule(body, "AUT", ids, new Date(2027, 1, 1)), [
     { date: "2026-11-19", chapters: ["AUT01", "AUT02"] },
     { date: "2026-11-20", chapters: ["AUT03", "AUT04"] },
@@ -114,5 +121,9 @@ t("학습 일정 — 요일이 없으면 기준 해, 달이 줄면 다음 해 ·
   assert.deepEqual(parseSchedule("# x\n## 목차\n- [[NET01 a]]\n", "NET"), []);
   assert.throws(() => parseSchedule("## 학습 일정\n- 11/19(일) — NET01\n", "NET", null, new Date(2026, 10, 18)), /요일이 맞는 해/);
   assert.throws(() => parseSchedule("## 학습 일정\n- 02/30 — NET01\n", "NET", null, new Date(2026, 10, 18)), /없는 날/);
+  // 요일 오타는 요일이 맞는 다른 해(2025-11-19 수)로 옮기지 않고 오류 — 메시지에 그 줄을 담는다
+  assert.throws(() => parseSchedule("## 학습 일정\n- 11/19(수) — AUT01\n", "AUT", null, new Date(2026, 10, 18)), /요일이 맞는 해.*11\/19\(수\) — AUT01/);
+  // 둘째 줄부터는 앞 줄에서 센 해로 판정
+  assert.throws(() => parseSchedule("## 학습 일정\n- 11/19(목) — AUT01\n- 11/20(목) — AUT02\n", "AUT", null, new Date(2026, 10, 18)), /11\/20\(목\)/);
 });
 console.log(`${n}/${n} 통과`);
