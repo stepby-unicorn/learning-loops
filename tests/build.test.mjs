@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { assetVersion } from "../tools/stamp_asset_version.mjs";
 
 let n = 0;
 const t = (name, fn) => { fn(); n++; console.log(`ok ${n} ${name}`); };
@@ -130,6 +131,10 @@ t("학습 일정 — 요일이 없으면 기준 해, 달이 줄면 다음 해 ·
   assert.throws(() => parseSchedule("## 학습 일정\n- 11/19(수) — AUT01\n", "AUT", null, new Date(2026, 10, 18)), /요일이 맞는 해.*11\/19\(수\) — AUT01/);
   // 둘째 줄부터는 앞 줄에서 센 해로 판정
   assert.throws(() => parseSchedule("## 학습 일정\n- 11/19(목) — AUT01\n- 11/20(목) — AUT02\n", "AUT", null, new Date(2026, 10, 18)), /11\/20\(목\)/);
+});
+t("version.json 의 v 가 지금 assets 내용 해시와 같음(코드를 고치면 node tools/stamp_asset_version.mjs)", () => {
+  const repo = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+  assert.equal(JSON.parse(fs.readFileSync(path.join(repo, "version.json"), "utf8")).v, assetVersion());
 });
 t("updated — 바뀐 항목·새 항목은 빌드 날짜, 같으면(공백만 다름 포함) 이전 값 유지·없으면 넣지 않음, 첫 빌드는 넣지 않음", () => {
   assert.equal(htmlHash("<p>가 나</p>\n<ul>\n <li>x</li></ul>"), htmlHash("<p>가  나</p><ul><li>x</li></ul>"));

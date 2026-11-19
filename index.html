@@ -7,7 +7,6 @@
 <title>학습 온보딩</title>
 <!-- 디자인 시스템: Framework7 9.3.0 (MIT) CSS 만 쓴다. 동작은 assets/app.js -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/framework7@9.3.0/framework7-bundle.min.css" integrity="sha384-uXNo4N9qJQsAsakeLzu1knQWIq/bxhuX/a1txyOJ+T7+XR25IJ9NaOveXTy4+iUa" crossorigin="anonymous">
-<link rel="stylesheet" href="assets/style.css">
 <script>
   // 테마: iPhone·iPad 는 iOS 모양, 그 밖은 Material 모양. 기기 설정이 어두우면 dark
   document.documentElement.classList.add(/iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent) && "ontouchend" in document ? "ios" : "md");
@@ -35,9 +34,24 @@
     <div class="ll-sheet-body" id="item-sheet-body"></div>
   </div>
 </div>
-<script src="assets/engine.js"></script>
-<script src="assets/plan.js"></script>
-<script src="assets/sync.js"></script>
-<script src="assets/app.js"></script>
+<script>
+  // 코드 파일은 version.json 의 v 를 주소 뒤에 붙여 불러온다 — Pages 가 10분 캐시를 허용해 같은 주소면 push 직후에도 옛 app.js 가 쓰인다.
+  // version.json 을 못 읽으면 지금 시각을 붙여 캐시를 건너뛴다. v 는 tools/stamp_asset_version.mjs 가 고친다
+  (async () => {
+    let v = "";
+    try { v = (await (await fetch("version.json", { cache: "no-cache" })).json()).v || ""; } catch {}
+    const q = `?v=${encodeURIComponent(v || String(Date.now()))}`;
+    const css = document.createElement("link");
+    css.rel = "stylesheet";
+    css.href = `assets/style.css${q}`;
+    document.head.appendChild(css);
+    for (const f of ["engine", "plan", "sync", "app"]) {
+      const s = document.createElement("script");
+      s.src = `assets/${f}.js${q}`;
+      s.async = false;
+      document.body.appendChild(s);
+    }
+  })();
+</script>
 </body>
 </html>

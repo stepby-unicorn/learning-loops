@@ -32,6 +32,7 @@
 | `topics/<주제>/index.json` | 장·항목·문항 구조, 학습 일정(`schedule`, 입구 노트에 「## 학습 일정」이 있을 때만), 항목 `updated`(바뀐 항목만) |
 | `topics/<주제>/<장>.json` | 장 본문(장을 열 때 불러옴), 항목 `updated`(index.json 과 같은 값) |
 | `examples/learning-science/` | 변환기 입력 예시(입구 노트 + 장 노트) |
+| `version.json` | 코드 파일 버전 — `index.html` 이 `assets/*.js·css` 주소 뒤에 `?v=` 로 붙여 휴대폰이 옛 코드를 캐시에서 쓰지 않게 한다. `assets/` 를 고치면 `node tools/stamp_asset_version.mjs` 로 다시 찍는다(`tests/build.test.mjs` 가 어긋나면 실패) |
 | `tests/` | `node tests/engine.test.js` · `node tests/schedule.test.js` · `node tests/plan.test.js` · `node tests/build.test.mjs` |
 
 ## 주제 더하기
