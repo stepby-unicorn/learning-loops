@@ -1,6 +1,11 @@
 // 변환기 규칙 시험: node tests/build.test.mjs
 import assert from "node:assert/strict";
-import { parseToc, parseQuestions, buildChapter, findDenied, findSecrets, dropVaultCodes, applyReplace, parseSchedule, exampleIpEnabled, parseArgs } from "../tools/build_topic_from_obsidian_notes.mjs";
+import { parseToc, parseQuestions, buildChapter, findDenied, findSecrets, dropVaultCodes, applyReplace, parseSchedule, exampleIpEnabled, parseArgs, htmlHash, stampUpdated } from "../tools/build_topic_from_obsidian_notes.mjs";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 let n = 0;
 const t = (name, fn) => { fn(); n++; console.log(`ok ${n} ${name}`); };
@@ -125,5 +130,64 @@ t("학습 일정 — 요일이 없으면 기준 해, 달이 줄면 다음 해 ·
   assert.throws(() => parseSchedule("## 학습 일정\n- 11/19(수) — AUT01\n", "AUT", null, new Date(2026, 10, 18)), /요일이 맞는 해.*11\/19\(수\) — AUT01/);
   // 둘째 줄부터는 앞 줄에서 센 해로 판정
   assert.throws(() => parseSchedule("## 학습 일정\n- 11/19(목) — AUT01\n- 11/20(목) — AUT02\n", "AUT", null, new Date(2026, 10, 18)), /11\/20\(목\)/);
+});
+t("updated — 바뀐 항목·새 항목은 빌드 날짜, 같으면(공백만 다름 포함) 이전 값 유지·없으면 넣지 않음, 첫 빌드는 넣지 않음", () => {
+  assert.equal(htmlHash("<p>가 나</p>\n<ul>\n <li>x</li></ul>"), htmlHash("<p>가  나</p><ul><li>x</li></ul>"));
+  assert.notEqual(htmlHash("<p>가 나</p>"), htmlHash("<p>가 다</p>"));
+  const prev = [
+    { id: "A#같음", html: "<p>a</p>" },
+    { id: "A#같음옛값", html: "<p>b</p>", updated: "2026-11-01" },
+    { id: "A#바뀜", html: "<p>c</p>", updated: "2026-11-01" },
+    { id: "A#공백만", html: "<p>d  e</p>\n" },
+  ];
+  const items = [
+    { id: "A#같음", html: "<p>a</p>" },
+    { id: "A#같음옛값", html: "<p>b</p>" },
+    { id: "A#바뀜", html: "<p>c 고침</p>" },
+    { id: "A#공백만", html: "<p>d e</p>" },
+    { id: "A#새 항목", html: "<p>n</p>" },
+  ];
+  stampUpdated(items, prev, "2026-11-19");
+  assert.deepEqual(items.map((i) => [i.id, i.updated]), [["A#같음", undefined], ["A#같음옛값", "2026-11-01"], ["A#바뀜", "2026-11-19"], ["A#공백만", undefined], ["A#새 항목", "2026-11-19"]]);
+  assert.ok(!("updated" in items[0]));
+  const first = [{ id: "A#x", html: "<p>x</p>" }];
+  stampUpdated(first, null, "2026-11-19");
+  assert.ok(!("updated" in first[0]));
+});
+t("updated — 변환기를 같은 출력 폴더로 다시 돌리면 첫 빌드 없음 → 고친 절만 그날 → 그대로면 유지(장 파일·index.json 둘 다)", () => {
+  const repo = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ll-build-"));
+  try {
+    const notes = path.join(tmp, "notes");
+    fs.cpSync(path.join(repo, "examples/learning-science"), notes, { recursive: true });
+    const entry = path.join(notes, "학습 과학 기초.md");
+    const out = path.join(tmp, "out");
+    const build = (date) => execFileSync(process.execPath, [path.join(repo, "tools/build_topic_from_obsidian_notes.mjs"), entry, "--out", out, "--date", date], { encoding: "utf8" });
+    const read = () => {
+      const dir = path.join(out, "learning-science");
+      const ch = JSON.parse(fs.readFileSync(path.join(dir, "LSC01.json"), "utf8"));
+      const idx = JSON.parse(fs.readFileSync(path.join(dir, "index.json"), "utf8"));
+      return { body: ch.items.map((i) => i.updated), index: idx.chapters.find((c) => c.id === "LSC01").items.map((i) => i.updated), ids: ch.items.map((i) => i.id) };
+    };
+    build("2026-11-18");
+    let r = read();
+    assert.ok(r.body.every((u) => u === undefined) && r.index.every((u) => u === undefined));
+    const chFile = fs.readdirSync(path.join(notes, "노트")).find((f) => f.startsWith("LSC01"));
+    const chPath = path.join(notes, "노트", chFile);
+    const md = fs.readFileSync(chPath, "utf8");
+    const target = r.ids[1].split("#")[1];
+    const at = md.indexOf(`## ${target}\n`);
+    assert.ok(at >= 0);
+    const end = at + `## ${target}\n`.length;
+    fs.writeFileSync(chPath, md.slice(0, end) + "\n고친 문장을 하나 더함.\n" + md.slice(end));
+    assert.match(build("2026-11-19"), /"updated":1/);
+    r = read();
+    assert.deepEqual(r.body.map((u, i) => [i, u]).filter(([, u]) => u), [[1, "2026-11-19"]]);
+    assert.deepEqual(r.index, r.body);
+    build("2026-11-20");
+    r = read();
+    assert.deepEqual(r.body.map((u, i) => [i, u]).filter(([, u]) => u), [[1, "2026-11-19"]]);
+    assert.deepEqual(r.index, r.body);
+  } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
 });
 console.log(`${n}/${n} 통과`);

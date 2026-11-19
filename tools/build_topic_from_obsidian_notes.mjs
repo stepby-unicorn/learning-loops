@@ -5,7 +5,7 @@
 // 쓰는 법:
 //   node tools/build_topic_from_obsidian_notes.mjs <입구 노트.md> [--slug account-auth] [--key AUT]
 //        [--title 제목] [--summary 한 줄] [--exclude "절 이름,절 이름"] [--rename "옛 절=보일 제목,…"]
-//        [--replace "옛 말=보일 말,…"] [--deny-file 금지어.txt] [--allow-example-ip 1] [--out topics] [--dry-run]
+//        [--replace "옛 말=보일 말,…"] [--deny-file 금지어.txt] [--allow-example-ip 1] [--out topics] [--date YYYY-MM-DD] [--dry-run]
 //
 // 읽는 규칙(학습 노트 스킬 「항목 단위」):
 //   - 입구 노트 앞머리 learning_key·learning_slug(없으면 --key·--slug), pages_exclude(빼고 올릴 장 절 이름 목록),
@@ -20,10 +20,14 @@
 //     굵은 보기가 하나가 아니면 exit 1
 //   - 입구 `## 학습 일정` 의 날짜 목록 줄(`- [ ] 11/19(목) — AUT01 · AUT02`, `- 2026-11-19 — AUT01` 도 됨) → index.json `schedule: [{ date, chapters }]`.
 //     절이 없거나 날짜 줄이 없으면 schedule 을 넣지 않는다. 연도 없는 날짜는 앞 줄 해 ±1 안에서 요일이 맞는 해(요일이 없으면 앞 줄 해, 달이 줄면 다음 해)
+//   - 항목 업데이트 표시: 이전 빌드의 topics/<slug>/<장>.json 과 같은 항목 id 의 html 을 공백 정규화 해시로 비교해
+//     바뀌었으면(그 장에 새로 생긴 항목 포함) 항목에 updated: "YYYY-MM-DD"(빌드 날짜, --date 로 바꿈), 같으면 이전 updated 를 그대로 둔다.
+//     이전 장 파일이 없으면(첫 빌드·새 장) updated 를 넣지 않는다. index.json 항목에도 같은 값을 싣는다(목차·오늘 화면이 본문 없이 판정)
 //   - 출력에 비밀값 꼴(SECRET_PATTERNS — 키·토큰·개인 키·IP·AWS 계정 번호·내부 URL)이나
 //     금지어 파일(줄마다 한 단어, # 은 설명)의 말이 있으면 쓰지 않고 exit 1
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
 import { markdownToHtml, setWikiResolver } from "./markdown_to_html.mjs";
 
 const NOT_ITEM = ["검수", "출처", "이해 확인 질문"];
@@ -220,6 +224,33 @@ export function buildChapter(md, chapterId, exclude, rename = {}) {
   return { id: chapterId, title, summary, items, cards };
 }
 
+// 태그 사이 공백·연속 공백만 다른 html 은 같은 내용으로 본다(변환기 줄바꿈 차이로 업데이트 표시가 뜨지 않게)
+export function htmlHash(html) {
+  const norm = String(html || "").replace(/>\s+</g, "><").replace(/\s+/g, " ").trim();
+  return crypto.createHash("sha256").update(norm).digest("hex");
+}
+
+// items 에 updated 를 붙인다(items 를 고침). prevItems = 이전 빌드 장 파일의 items, null 이면 첫 빌드라 붙이지 않는다
+export function stampUpdated(items, prevItems, date) {
+  if (!prevItems) return items;
+  const prev = new Map(prevItems.map((p) => [p.id, p]));
+  for (const it of items) {
+    const old = prev.get(it.id);
+    if (!old || htmlHash(old.html) !== htmlHash(it.html)) it.updated = date;
+    else if (old.updated) it.updated = old.updated;
+  }
+  return items;
+}
+
+function readPrevChapter(file) {
+  try { return JSON.parse(fs.readFileSync(file, "utf8")).items || null; } catch { return null; }
+}
+
+function localDate(d = new Date()) {
+  const p2 = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
+}
+
 function readDeny(file) {
   if (!file) return [];
   return fs.readFileSync(file, "utf8").split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("#"));
@@ -308,15 +339,18 @@ function main() {
   if (schedule.length) index.schedule = schedule;
   const bodies = [];
   const missing = [];
+  const outDir = path.join(args.out || "topics", slug);
+  const buildDate = args.date || localDate();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(buildDate)) { console.error(`--date 는 YYYY-MM-DD 입니다: ${buildDate}`); process.exit(2); }
   for (const c of toc) {
     const file = files.find((f) => path.basename(f).startsWith(c.id + " ") || path.basename(f) === `${c.id}.md`);
     if (!file) { missing.push(c.id); continue; }
     const ch = buildChapter(applyReplace(fs.readFileSync(file, "utf8"), replace), c.id, exclude, rename);
-    index.chapters.push({ id: ch.id, title: ch.title, part: c.part, summary: ch.summary, items: ch.items.map(({ id, title }) => ({ id, title })), cards: ch.cards });
+    stampUpdated(ch.items, readPrevChapter(path.join(outDir, `${ch.id}.json`)), buildDate);
+    index.chapters.push({ id: ch.id, title: ch.title, part: c.part, summary: ch.summary, items: ch.items.map(({ id, title, updated }) => (updated ? { id, title, updated } : { id, title })), cards: ch.cards });
     bodies.push({ id: ch.id, title: ch.title, items: ch.items });
   }
 
-  const outDir = path.join(args.out || "topics", slug);
   const outputs = [[path.join(outDir, "index.json"), JSON.stringify(index, null, 1)], ...bodies.map((b) => [path.join(outDir, `${b.id}.json`), JSON.stringify(b)])];
   const denied = [...readDeny(args["deny-file"]), ...Object.keys(replace)];
   const exampleIp = exampleIpEnabled(fm, args);
@@ -332,6 +366,7 @@ function main() {
     cards: index.chapters.reduce((n, c) => n + c.cards.length, 0),
     noCards: index.chapters.filter((c) => !c.cards.length).map((c) => c.id),
     schedule: schedule.length,
+    updated: bodies.reduce((n, b) => n + b.items.filter((it) => it.updated === buildDate).length, 0),
     excluded: exclude, renamed: rename, replaced: replace, denied: hits.length,
   };
   if (hits.length) {
