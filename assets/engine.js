@@ -68,14 +68,14 @@ function itemQuestions(state, itemId) {
   return (state.questions[itemId] || []).filter((q) => !q.del).sort((a, b) => a.t - b.t);
 }
 
-// 항목 updated("YYYY-MM-DD") → 그날 00:00 로컬 시각, 없거나 꼴이 틀리면 0
+// 항목 updated("YYYY-MM-DDTHH:MM", 옛 빌드는 "YYYY-MM-DD" = 그날 00:00) → 로컬 시각, 없거나 꼴이 틀리면 0
 function updatedTime(item) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(item?.updated || "");
-  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).getTime() : 0;
+  const m = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?$/.exec(item?.updated || "");
+  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4] || 0), Number(m[5] || 0)).getTime() : 0;
 }
 
 // 항목 표시: "answered" = 질문 뒤에 내용이 바뀜(읽음 여부와 상관없이), "updated" = 읽은 뒤에 내용이 바뀜, null = 표시 없음.
-// 둘 다 읽음 시각이 updated 이후면(다시 읽음 체크) 사라진다. 날짜 단위라 같은 날 읽거나 물은 뒤의 변경은 잡지 못한다
+// 둘 다 읽음 시각이 updated 이후면(다시 읽음 체크) 사라진다. 분 단위라 같은 분 안의 읽음·질문 뒤 변경은 잡지 못한다
 function itemNotice(state, item) {
   const u = updatedTime(item);
   if (!u) return null;

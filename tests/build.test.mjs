@@ -180,13 +180,13 @@ t("updated — 변환기를 같은 출력 폴더로 다시 돌리면 첫 빌드 
     assert.ok(at >= 0);
     const end = at + `## ${target}\n`.length;
     fs.writeFileSync(chPath, md.slice(0, end) + "\n고친 문장을 하나 더함.\n" + md.slice(end));
-    assert.match(build("2026-11-19"), /"updated":1/);
+    assert.match(build("2026-11-19T09:31"), /"updated":1/);
     r = read();
-    assert.deepEqual(r.body.map((u, i) => [i, u]).filter(([, u]) => u), [[1, "2026-11-19"]]);
+    assert.deepEqual(r.body.map((u, i) => [i, u]).filter(([, u]) => u), [[1, "2026-11-19T09:31"]]);
     assert.deepEqual(r.index, r.body);
     build("2026-11-20");
     r = read();
-    assert.deepEqual(r.body.map((u, i) => [i, u]).filter(([, u]) => u), [[1, "2026-11-19"]]);
+    assert.deepEqual(r.body.map((u, i) => [i, u]).filter(([, u]) => u), [[1, "2026-11-19T09:31"]]);
     assert.deepEqual(r.index, r.body);
   } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
 });

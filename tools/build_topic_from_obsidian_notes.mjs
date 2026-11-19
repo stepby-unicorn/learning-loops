@@ -5,7 +5,7 @@
 // 쓰는 법:
 //   node tools/build_topic_from_obsidian_notes.mjs <입구 노트.md> [--slug account-auth] [--key AUT]
 //        [--title 제목] [--summary 한 줄] [--exclude "절 이름,절 이름"] [--rename "옛 절=보일 제목,…"]
-//        [--replace "옛 말=보일 말,…"] [--deny-file 금지어.txt] [--allow-example-ip 1] [--out topics] [--date YYYY-MM-DD] [--dry-run]
+//        [--replace "옛 말=보일 말,…"] [--deny-file 금지어.txt] [--allow-example-ip 1] [--out topics] [--date YYYY-MM-DDTHH:MM] [--dry-run]
 //
 // 읽는 규칙(학습 노트 스킬 「항목 단위」):
 //   - 입구 노트 앞머리 learning_key·learning_slug(없으면 --key·--slug), pages_exclude(빼고 올릴 장 절 이름 목록),
@@ -21,7 +21,7 @@
 //   - 입구 `## 학습 일정` 의 날짜 목록 줄(`- [ ] 11/19(목) — AUT01 · AUT02`, `- 2026-11-19 — AUT01` 도 됨) → index.json `schedule: [{ date, chapters }]`.
 //     절이 없거나 날짜 줄이 없으면 schedule 을 넣지 않는다. 연도 없는 날짜는 앞 줄 해 ±1 안에서 요일이 맞는 해(요일이 없으면 앞 줄 해, 달이 줄면 다음 해)
 //   - 항목 업데이트 표시: 이전 빌드의 topics/<slug>/<장>.json 과 같은 항목 id 의 html 을 공백 정규화 해시로 비교해
-//     바뀌었으면(그 장에 새로 생긴 항목 포함) 항목에 updated: "YYYY-MM-DD"(빌드 날짜, --date 로 바꿈), 같으면 이전 updated 를 그대로 둔다.
+//     바뀌었으면(그 장에 새로 생긴 항목 포함) 항목에 updated: "YYYY-MM-DDTHH:MM"(빌드 시각 로컬, --date 로 바꿈 — 같은 날 질문 뒤 보완도 가리려고 분까지), 같으면 이전 updated 를 그대로 둔다.
 //     이전 장 파일이 없으면(첫 빌드·새 장) updated 를 넣지 않는다. index.json 항목에도 같은 값을 싣는다(목차·오늘 화면이 본문 없이 판정)
 //   - 출력에 비밀값 꼴(SECRET_PATTERNS — 키·토큰·개인 키·IP·AWS 계정 번호·내부 URL)이나
 //     금지어 파일(줄마다 한 단어, # 은 설명)의 말이 있으면 쓰지 않고 exit 1
@@ -246,9 +246,9 @@ function readPrevChapter(file) {
   try { return JSON.parse(fs.readFileSync(file, "utf8")).items || null; } catch { return null; }
 }
 
-function localDate(d = new Date()) {
+function localMinute(d = new Date()) {
   const p2 = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
+  return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}T${p2(d.getHours())}:${p2(d.getMinutes())}`;
 }
 
 function readDeny(file) {
@@ -340,8 +340,8 @@ function main() {
   const bodies = [];
   const missing = [];
   const outDir = path.join(args.out || "topics", slug);
-  const buildDate = args.date || localDate();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(buildDate)) { console.error(`--date 는 YYYY-MM-DD 입니다: ${buildDate}`); process.exit(2); }
+  const buildDate = args.date || localMinute();
+  if (!/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$/.test(buildDate)) { console.error(`--date 는 YYYY-MM-DD 또는 YYYY-MM-DDTHH:MM 입니다: ${buildDate}`); process.exit(2); }
   for (const c of toc) {
     const file = files.find((f) => path.basename(f).startsWith(c.id + " ") || path.basename(f) === `${c.id}.md`);
     if (!file) { missing.push(c.id); continue; }

@@ -150,6 +150,7 @@ cases.push(["업데이트 판정: 읽은 뒤 바뀜 = updated, 안 읽음·updat
   const u = new Date(2026, 10, 18).getTime();
   assert.strictEqual(E.updatedTime(it), u);
   assert.strictEqual(E.updatedTime({ updated: "11/18" }), 0);
+  assert.strictEqual(E.updatedTime({ updated: "2026-11-18T09:05" }), new Date(2026, 10, 18, 9, 5).getTime());
   const s = E.emptyState();
   assert.strictEqual(E.itemNotice(s, it), null);
   s.read[it.id] = u - 1;
@@ -157,6 +158,12 @@ cases.push(["업데이트 판정: 읽은 뒤 바뀜 = updated, 안 읽음·updat
   assert.strictEqual(E.itemNotice(s, { id: it.id }), null);
   E.setRead(s, it.id, true, u + 1);
   assert.strictEqual(E.itemNotice(s, it), null);
+}]);
+cases.push(["질문 답 판정(시각 꼴): 같은 날 질문 뒤에 보완하면 answered, 보완 뒤 질문이면 아님", () => {
+  const s = E.emptyState();
+  E.addQuestion(s, "T01#원리", "왜?", new Date(2026, 10, 19, 9, 30).getTime());
+  assert.strictEqual(E.itemNotice(s, { id: "T01#원리", updated: "2026-11-19T07:40" }), null);
+  assert.strictEqual(E.itemNotice(s, { id: "T01#원리", updated: "2026-11-19T09:31" }), "answered");
 }]);
 cases.push(["질문 답 판정: 마지막 질문 뒤에 바뀌면 읽음과 상관없이 answered, 질문이 updated 뒤면 아님, 다시 읽으면 사라짐", () => {
   const it = { id: "T01#원리", updated: "2026-11-18" };
