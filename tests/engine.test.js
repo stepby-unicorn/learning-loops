@@ -115,6 +115,77 @@ cases.push(["피드백 요약에 문항 ID 별 틀린 횟수·확신 오답이 �
   assert.match(text, /확신했는데 틀림 1/);
   assert.match(text, /- T02-Q01 틀림 1 \(확신 1\)/);
 }]);
+cases.push(["옛 저장값(questions 없음)은 questions {} 로 채우고, 깨진 questions 도 빈 값", () => {
+  assert.deepStrictEqual(E.normalizeState({ read: { a: 1 } }).questions, {});
+  assert.deepStrictEqual(E.normalizeState({ questions: [1, 2] }).questions, {});
+  assert.deepStrictEqual(E.normalizeState({ questions: "x" }).questions, {});
+  assert.deepStrictEqual(E.mergeStates({ read: {}, cards: {}, log: [] }, null).questions, {});
+}]);
+cases.push(["질문 더하기·지우기 — 빈 글은 안 넣고, 같은 시각은 1ms 뒤로, 지운 질문은 목록에서 빠짐", () => {
+  const s = E.emptyState();
+  assert.strictEqual(E.addQuestion(s, "T01#원리", "   ", now), null);
+  E.addQuestion(s, "T01#원리", " 둘째 ", now + 10);
+  E.addQuestion(s, "T01#원리", "첫째", now);
+  E.addQuestion(s, "T01#원리", "같은 시각", now);
+  assert.deepStrictEqual(E.itemQuestions(s, "T01#원리").map((q) => [q.t - now, q.text]), [[0, "첫째"], [1, "같은 시각"], [10, "둘째"]]);
+  assert.strictEqual(E.deleteQuestion(s, "T01#원리", now + 1, now + 20), true);
+  assert.strictEqual(E.deleteQuestion(s, "T01#원리", 12345), false);
+  assert.deepStrictEqual(E.itemQuestions(s, "T01#원리").map((q) => q.text), ["첫째", "둘째"]);
+}]);
+cases.push(["질문 합치기: 항목마다 t 로 합집합·시각 순, 지움(tombstone)이 이기고 다시 합쳐도 같음", () => {
+  const a = E.emptyState(); const b = E.emptyState();
+  E.addQuestion(a, "T01#원리", "A1", now); E.addQuestion(a, "T01#원리", "A2", now + 5);
+  E.addQuestion(b, "T01#원리", "B1", now + 2); E.addQuestion(b, "T02#원리", "B2", now + 3);
+  b.questions["T01#원리"].push({ t: now, text: "A1" });
+  E.deleteQuestion(b, "T01#원리", now, now + 9);
+  const m = E.mergeStates(a, b);
+  assert.deepStrictEqual(m.questions["T01#원리"].map((q) => [q.t - now, q.text, q.del || 0]), [[0, "", now + 9], [2, "B1", 0], [5, "A2", 0]]);
+  assert.deepStrictEqual(m.questions["T02#원리"].map((q) => q.text), ["B2"]);
+  assert.deepStrictEqual(E.mergeStates(b, a), m);
+  assert.deepStrictEqual(E.mergeStates(m, a), m);
+  assert.deepStrictEqual(E.itemQuestions(m, "T01#원리").map((q) => q.text), ["B1", "A2"]);
+}]);
+cases.push(["업데이트 판정: 읽은 뒤 바뀜 = updated, 안 읽음·updated 없음 = 표시 없음, 다시 읽으면 사라짐", () => {
+  const it = { id: "T01#원리", updated: "2026-11-18" };
+  const u = new Date(2026, 10, 18).getTime();
+  assert.strictEqual(E.updatedTime(it), u);
+  assert.strictEqual(E.updatedTime({ updated: "11/18" }), 0);
+  const s = E.emptyState();
+  assert.strictEqual(E.itemNotice(s, it), null);
+  s.read[it.id] = u - 1;
+  assert.strictEqual(E.itemNotice(s, it), "updated");
+  assert.strictEqual(E.itemNotice(s, { id: it.id }), null);
+  E.setRead(s, it.id, true, u + 1);
+  assert.strictEqual(E.itemNotice(s, it), null);
+}]);
+cases.push(["질문 답 판정: 마지막 질문 뒤에 바뀌면 읽음과 상관없이 answered, 질문이 updated 뒤면 아님, 다시 읽으면 사라짐", () => {
+  const it = { id: "T01#원리", updated: "2026-11-18" };
+  const u = new Date(2026, 10, 18).getTime();
+  const s = E.emptyState();
+  E.addQuestion(s, it.id, "모름", u - 1000);
+  assert.strictEqual(E.itemNotice(s, it), "answered");
+  s.read[it.id] = u - 5000;
+  assert.strictEqual(E.itemNotice(s, it), "answered");
+  E.addQuestion(s, it.id, "또 모름", u + 1000);
+  assert.strictEqual(E.itemNotice(s, it), "updated");
+  E.deleteQuestion(s, it.id, u + 1000);
+  assert.strictEqual(E.itemNotice(s, it), "answered");
+  E.setRead(s, it.id, true, u + 2000);
+  assert.strictEqual(E.itemNotice(s, it), null);
+  const t2 = { ...topic, chapters: [{ ...topic.chapters[0], items: [it, { id: "T01#방법", title: "방법", updated: "2026-11-18" }] }] };
+  s.read["T01#원리"] = u - 1;
+  assert.deepStrictEqual(E.noticeItems(t2, s).map((x) => [x.id, x.chapterId, x.notice]), [["T01#원리", "T01", "answered"]]);
+}]);
+cases.push(["피드백 요약에 모르는 것 절 — 항목 ID·제목·시각·글(지운 질문 뺌), 질문이 없으면 절 없음", () => {
+  const s = E.emptyState();
+  assert.doesNotMatch(E.feedbackSummary(topic, s, now), /모르는 것/);
+  E.addQuestion(s, "T02#원리", "왜 이렇게 되나\n둘째 줄", now);
+  E.addQuestion(s, "T01#방법", "지울 것", now + 1);
+  E.deleteQuestion(s, "T01#방법", now + 1);
+  const text = E.feedbackSummary(topic, s, now);
+  assert.match(text, /모르는 것 1건\n- T02#원리 원리\n  - 2026-11-16T09:00[+-]\d{2}:\d{2} 왜 이렇게 되나\n    둘째 줄/);
+  assert.doesNotMatch(text, /T01#방법/);
+}]);
 let fail = 0;
 for (const [name, fn] of cases) { try { fn(); console.log("ok  ", name); } catch (e) { fail++; console.log("FAIL", name, e.message); } }
 console.log(`${cases.length - fail}/${cases.length} 통과`);

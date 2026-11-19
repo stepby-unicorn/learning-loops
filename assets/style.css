@@ -311,3 +311,23 @@ details[open] > .ll-part-head::before { transform: rotate(90deg); }
 .ll-chip-on { background: var(--f7-theme-color); color: #fff; font-weight: 600; }
 .ll-chip-n { font-variant-numeric: tabular-nums; font-weight: 700; }
 .ll-due-list .item-title { white-space: normal; word-break: keep-all; overflow-wrap: anywhere; }
+
+/* 업데이트 표시: 「업데이트 있음」(읽은 뒤 바뀜)·「질문 답 있음」(질문 뒤 바뀜) 알약 — 밝은·어두운 모두 글자 대비 4.5 이상 */
+:root { --ll-notice-upd: #0a5fc2; --ll-notice-upd-bg: rgba(0, 122, 255, 0.12); --ll-notice-ans: #8a4b00; --ll-notice-ans-bg: rgba(255, 149, 0, 0.16); }
+.dark { --ll-notice-upd: #78b4ff; --ll-notice-upd-bg: rgba(10, 132, 255, 0.22); --ll-notice-ans: #ffb340; --ll-notice-ans-bg: rgba(255, 159, 10, 0.2); }
+.ll-notice { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; line-height: 18px; white-space: nowrap; }
+.ll-notice-updated { color: var(--ll-notice-upd); background: var(--ll-notice-upd-bg); }
+.ll-notice-answered { color: var(--ll-notice-ans); background: var(--ll-notice-ans-bg); }
+.ll-notice-line { margin: 0 0 8px; font-size: 14px; line-height: 1.5; }
+.ll-path-notice { font-size: 12px; font-weight: 600; white-space: nowrap; color: var(--ll-notice-upd); }
+.ll-revisit .item-title { white-space: normal; word-break: keep-all; overflow-wrap: anywhere; min-width: 0; }
+.ll-revisit .item-after { flex: none; }
+
+/* 항목 맨 아래 「모르는 것」: 질문 목록(시각·지우기) + 여러 줄 입력·추가 */
+.ll-ask { display: grid; gap: 10px; }
+.ll-ask-title { margin: 0; font-size: 17px; font-weight: 700; }
+.ll-ask-list { list-style: none; margin: 0; padding: 0; }
+.ll-ask-row { padding: 8px 0; border-bottom: 1px solid var(--ll-bar-border); }
+.ll-ask-text { margin: 0; white-space: pre-wrap; word-break: keep-all; overflow-wrap: anywhere; }
+.ll-ask-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; color: var(--ll-ink-2); }
+.ll-ask-del { flex: none; width: auto; min-height: 44px; min-width: 44px; padding: 0 8px; border: 0; background: none; font: inherit; color: var(--ll-late); cursor: pointer; }

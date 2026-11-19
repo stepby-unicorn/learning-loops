@@ -25,20 +25,71 @@ function todayStart(t = Date.now()) {
   return d.getTime();
 }
 
+// questions = 항목마다 「모르는 것」 질문 [{ t, text }] — 지운 질문은 del(지운 시각)만 남겨 다른 기기 사본과 합쳐도 되살아나지 않게 한다
 function emptyState() {
-  return { read: {}, unread: {}, cards: {}, log: [] };
+  return { read: {}, unread: {}, cards: {}, log: [], questions: {} };
 }
 
 // 저장소가 없거나 깨졌으면 빈 상태. 옛 필드가 빠졌으면 채운다.
 function normalizeState(raw) {
   const s = raw && typeof raw === "object" ? raw : {};
-  return { read: s.read || {}, unread: s.unread || {}, cards: s.cards || {}, log: Array.isArray(s.log) ? s.log : [] };
+  const q = s.questions && typeof s.questions === "object" && !Array.isArray(s.questions) ? s.questions : {};
+  return { read: s.read || {}, unread: s.unread || {}, cards: s.cards || {}, log: Array.isArray(s.log) ? s.log : [], questions: q };
 }
 
 // 읽음 체크·취소 — 취소는 unread 에 시각을 남겨 다른 기기의 옛 읽음보다 나중이면 이긴다(mergeStates)
 function setRead(state, itemId, on, t = Date.now()) {
   if (on) { state.read[itemId] = t; delete state.unread[itemId]; }
   else { delete state.read[itemId]; state.unread[itemId] = t; }
+}
+
+// 질문 더하기 — 빈 글은 넣지 않고 null. 같은 항목에 같은 시각이 있으면 1ms 뒤로 밀어 (항목, t) 를 겹치지 않게 한다
+function addQuestion(state, itemId, text, t = Date.now()) {
+  const body = String(text ?? "").trim();
+  if (!body) return null;
+  const list = state.questions[itemId] || (state.questions[itemId] = []);
+  while (list.some((q) => q.t === t)) t++;
+  const q = { t, text: body };
+  list.push(q);
+  return q;
+}
+
+// 질문 지우기 — 글은 비우고 지운 시각만 남긴다(tombstone)
+function deleteQuestion(state, itemId, t, now = Date.now()) {
+  const q = (state.questions[itemId] || []).find((x) => x.t === t);
+  if (!q) return false;
+  q.text = "";
+  q.del = now;
+  return true;
+}
+
+// 화면·요약에 보일 질문(지운 것 뺌, 시각 순)
+function itemQuestions(state, itemId) {
+  return (state.questions[itemId] || []).filter((q) => !q.del).sort((a, b) => a.t - b.t);
+}
+
+// 항목 updated("YYYY-MM-DD") → 그날 00:00 로컬 시각, 없거나 꼴이 틀리면 0
+function updatedTime(item) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(item?.updated || "");
+  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).getTime() : 0;
+}
+
+// 항목 표시: "answered" = 질문 뒤에 내용이 바뀜(읽음 여부와 상관없이), "updated" = 읽은 뒤에 내용이 바뀜, null = 표시 없음.
+// 둘 다 읽음 시각이 updated 이후면(다시 읽음 체크) 사라진다. 날짜 단위라 같은 날 읽거나 물은 뒤의 변경은 잡지 못한다
+function itemNotice(state, item) {
+  const u = updatedTime(item);
+  if (!u) return null;
+  const read = state.read[item.id];
+  if (read && read >= u) return null;
+  const asked = itemQuestions(state, item.id);
+  if (asked.length && u > asked[asked.length - 1].t) return "answered";
+  return read ? "updated" : null;
+}
+const NOTICE_LABEL = { updated: "업데이트 있음", answered: "질문 답 있음" };
+
+// 다시 볼 항목 — 주제 순서대로 [{ ...항목, chapterId, notice }]
+function noticeItems(topic, state) {
+  return allItems(topic).map((it) => ({ ...it, notice: itemNotice(state, it) })).filter((it) => it.notice);
 }
 
 // 채점 결과로 다음 상자·점검일을 정한다
@@ -182,7 +233,18 @@ function mergeStates(a, b) {
   for (const [k, c] of Object.entries(y.cards)) if (!cards[k] || (c.last || 0) > (cards[k].last || 0)) cards[k] = c;
   const seen = new Set();
   const log = [...x.log, ...y.log].filter((l) => { const key = `${l.id}|${l.t}`; if (seen.has(key)) return false; seen.add(key); return true; }).sort((p, q) => p.t - q.t);
-  return { read, unread, cards, log };
+  // 질문은 항목마다 t 로 합집합 — 한쪽이라도 지웠으면 지운 쪽(나중 del)을 남긴다
+  const questions = {};
+  for (const k of [...new Set([...Object.keys(x.questions), ...Object.keys(y.questions)])].sort()) {
+    const byT = new Map();
+    for (const q of [...(x.questions[k] || []), ...(y.questions[k] || [])]) {
+      if (!q || typeof q.t !== "number") continue;
+      const had = byT.get(q.t);
+      if (!had || (q.del || 0) > (had.del || 0)) byT.set(q.t, q.del ? { t: q.t, text: "", del: q.del } : { t: q.t, text: q.text });
+    }
+    if (byT.size) questions[k] = [...byT.values()].sort((p, q) => p.t - q.t);
+  }
+  return { read, unread, cards, log, questions };
 }
 
 // 맞혔지만 확신이 없으면 부분으로 본다(운으로 맞힌 답은 일찍 다시 본다)
@@ -208,6 +270,15 @@ function feedbackSummary(topic, state, now = Date.now()) {
     const last = [...recent].reverse().find((l) => l.id === cid && l.answer);
     lines.push(`- ${cid} 틀림 ${count[cid].n}${count[cid].confident ? ` (확신 ${count[cid].confident})` : ""}${c ? ` ${c.q.slice(0, 60)}` : ""}${last ? ` / 내 답: ${last.answer.slice(0, 80)}` : ""}`);
   }
+  // 모르는 것 — 항목 ID 로 장 노트 절을 찾아 답을 보완한다. 글의 줄바꿈은 들여쓴 줄로 둔다
+  const asked = allItems(topic).map((it) => ({ it, qs: itemQuestions(state, it.id) })).filter((x) => x.qs.length);
+  if (asked.length) {
+    lines.push(`모르는 것 ${asked.reduce((n, x) => n + x.qs.length, 0)}건`);
+    for (const { it, qs } of asked) {
+      lines.push(`- ${it.id} ${it.title}`);
+      for (const q of qs) lines.push(`  - ${localStamp(q.t)} ${q.text.replace(/\n/g, "\n    ")}`);
+    }
+  }
   return lines.join("\n");
 }
 
@@ -228,5 +299,5 @@ function shuffleInPlace(a) {
 }
 
 if (typeof module !== "undefined") {
-  module.exports = { SCHEDULE, DAY, STORE_PREFIX, STAGE_LABEL, todayStart, emptyState, normalizeState, nextReview, cardStatus, allItems, itemStage, chapterStage, reviewQueue, topicProgress, createSession, setRead, mergeStates, adjustGrade, feedbackSummary };
+  module.exports = { SCHEDULE, DAY, STORE_PREFIX, STAGE_LABEL, todayStart, emptyState, normalizeState, nextReview, cardStatus, allItems, itemStage, chapterStage, reviewQueue, topicProgress, createSession, setRead, mergeStates, adjustGrade, feedbackSummary, addQuestion, deleteQuestion, itemQuestions, updatedTime, itemNotice, NOTICE_LABEL, noticeItems };
 }

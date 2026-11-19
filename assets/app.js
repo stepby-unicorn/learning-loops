@@ -4,18 +4,26 @@
 //   #/topics                    주제 — 주제 카드 목록
 //   #/t/<주제>                  목차(부별 접기·장 상태·일정 날짜)
 //   #/t/<주제>/c/<장>           장 — 항목 읽음 체크 + 그 장 테스트
-//   #/t/<주제>/i/<항목 id>      항목 읽기(항목 id = <장>#<절 이름>) — 위 「n / m」 줄 = 장 안 항목 목록 시트, 아래 이전·읽음·다음 바
+//   #/t/<주제>/i/<항목 id>      항목 읽기(항목 id = <장>#<절 이름>) — 위 「n / m」 줄 = 장 안 항목 목록 시트, 맨 아래 「모르는 것」 질문, 아래 이전·읽음·다음 바
 //   #/t/<주제>/done/<장>        장 완료 — 장 테스트 · 다음 장 읽기
 //   #/review                    복습 「전체」 — 주제 칩(대기 수)·숫자 3줄·재점검 시작(모든 주제 한 회차)·오늘 재점검 내역
 //   #/t/<주제>/review           복습 — 칩에서 고른 주제만(항목을 모두 읽은 장의 문항)
 //   #/settings · #/t/<주제>/log 설정 — 동기화 · 결과 보내기 · 요약 복사 · 백업(log 는 그 주제를 고른 설정)
-// 일정·학습량 계산은 assets/plan.js
+// 일정·학습량 계산은 assets/plan.js. 「업데이트 있음」·「질문 답 있음」 판정은 engine.js itemNotice(항목 updated 와 읽음·질문 시각)
 // 데이터: topics/topics.json(주제 목록) · topics/<주제>/index.json(구조·문항·일정 schedule) · topics/<주제>/<장>.json(장 본문, 열 때 불러옴)
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const enc = encodeURIComponent;
 const fmtDate = (t) => { const d = new Date(t); return `${d.getMonth() + 1}/${d.getDate()}`; };
 const STAGE_ICON = { unread: "○", reading: "◔", read: "◑", tested: "◕", mastered: "●" };
+const fmtTime = (t) => `${fmtDate(t)} ${new Date(t).toTimeString().slice(0, 5)}`;
+// 업데이트 표시 알약 — kind = itemNotice 결과
+const noticePill = (kind) => (kind ? `<span class="ll-notice ll-notice-${kind}">${NOTICE_LABEL[kind]}</span>` : "");
+// 장마다 다시 볼 항목 수 — 목차 장 행 「질문 답 n · 업데이트 n」
+function noticeCountText(list) {
+  const n = (k) => list.filter((x) => x.notice === k).length;
+  return [n("answered") && `질문 답 ${n("answered")}`, n("updated") && `업데이트 ${n("updated")}`].filter(Boolean).join(" · ");
+}
 
 let topicList = null;
 const topicCache = {};
@@ -243,9 +251,10 @@ function openItemSheet(id, ch, currentId) {
   const rows = ch.items.map((x, i) => {
     const on = x.id === currentId;
     const read = !!state.read[x.id];
-    return `<li><a class="ll-sheet-row${on ? " ll-sheet-row-on" : ""}" href="#/t/${enc(id)}/i/${enc(x.id)}"${on ? ' aria-current="true"' : ""} aria-label="${i + 1}. ${esc(x.title)}, ${read ? "읽음" : "안 읽음"}${on ? ", 지금 항목" : ""}">
+    const notice = itemNotice(state, x);
+    return `<li><a class="ll-sheet-row${on ? " ll-sheet-row-on" : ""}" href="#/t/${enc(id)}/i/${enc(x.id)}"${on ? ' aria-current="true"' : ""} aria-label="${i + 1}. ${esc(x.title)}, ${read ? "읽음" : "안 읽음"}${notice ? `, ${NOTICE_LABEL[notice]}` : ""}${on ? ", 지금 항목" : ""}">
       <span class="ll-sheet-mark${read ? " ll-sheet-mark-read" : ""}" aria-hidden="true">${read ? "✓" : STAGE_ICON.unread}</span>
-      <span class="ll-sheet-text"><span class="ll-sheet-name">${i + 1}. ${esc(x.title)}</span></span></a></li>`;
+      <span class="ll-sheet-text"><span class="ll-sheet-name">${i + 1}. ${esc(x.title)}</span>${notice ? `<span class="ll-sheet-sub" aria-hidden="true">${noticePill(notice)}</span>` : ""}</span></a></li>`;
   });
   $("#item-sheet-body").innerHTML = `<ul class="ll-sheet-list">${rows.join("")}</ul>`;
   // 지금 항목을 다시 누르면 주소가 같아 hashchange 가 없으니 시트만 닫는다
@@ -302,6 +311,9 @@ async function viewHome(root) {
   const todoRows = todo.map((r) => `<li class="ll-today-row"><a href="#/t/${enc(r.t.id)}"><span class="ll-today-topic">${esc(r.t.title)}</span>
       <span class="ll-today-chs">${r.plan.pending.map((x) => `<span class="ll-today-ch">${esc(x.chapter.id)}${x.late ? ` <span class="ll-late">${shortDay(x.date)} 밀림</span>` : ""}</span>`).join('<span aria-hidden="true"> · </span>')}</span></a></li>`).join("");
   const dueRow = due ? `<li class="ll-today-row"><a href="#/review"><span class="ll-today-topic">재점검 대기</span><span class="ll-today-num">${due}</span></a></li>` : "";
+  // 다시 볼 항목(읽은 뒤 업데이트·질문 뒤 업데이트) — 목록은 복습 화면에
+  const revisit = entries.reduce((n, r) => n + noticeItems(r.topic, r.state).length, 0);
+  const revisitRow = revisit ? `<li class="ll-today-row"><a href="#/review"><span class="ll-today-topic">다시 볼 항목</span><span class="ll-today-num">${revisit}</span></a></li>` : "";
   const first = todo[0];
   const go = first ? null : continueTarget(entries);
   const primary = first
@@ -310,7 +322,7 @@ async function viewHome(root) {
     : go ? `<a class="button button-fill button-large ll-actions" href="#/t/${enc(go.t.id)}/i/${enc(go.next.id)}">이어 읽기: ${esc(go.next.chapterId)}</a>` : "";
   const todayCard = `<div class="card ll-today"><div class="card-content card-content-padding">
       <p class="ll-eyebrow">오늘 할 일</p>
-      ${todoRows || dueRow ? `<ul class="ll-today-list">${todoRows}${dueRow}</ul>` : `<p class="ll-state">오늘 일정·재점검이 없어요.</p>
+      ${todoRows || dueRow || revisitRow ? `<ul class="ll-today-list">${todoRows}${dueRow}${revisitRow}</ul>` : `<p class="ll-state">오늘 일정·재점검이 없어요.</p>
       ${go ? `<p class="ll-muted ll-today-next">이어 읽기 · ${esc(go.t.title)} · ${esc(go.next.title)}부터</p>` : ""}`}
       ${primary}</div></div>`;
 
@@ -391,6 +403,7 @@ async function viewToc(root, id) {
   // 일정 날짜(있으면): 안 끝난 장인데 날짜가 어제 이전이면 빨강 「M/D 밀림」
   const plan = scheduleStatus(topic, state);
   const today = dayKey(Date.now());
+  const notices = noticeItems(topic, state);
   const groups = [];
   for (const ch of topic.chapters) {
     const last = groups[groups.length - 1];
@@ -405,9 +418,11 @@ async function viewToc(root, id) {
     const date = plan && plan.dateOf.get(ch.id);
     const late = date && date < today && !chapterDone(state, ch);
     const dateHtml = date ? `<span class="ll-path-date${late ? " ll-late" : ""}">${shortDay(date)}${late ? " 밀림" : ""}</span>` : "";
+    const noticeText = noticeCountText(notices.filter((x) => x.chapterId === ch.id));
+    const noticeHtml = noticeText ? `<span class="ll-path-notice">${noticeText}</span>` : "";
     return `<li class="ll-path-row ll-path-${st}${now ? " ll-path-now" : ""}"${now ? ' id="toc-now"' : ""}><a href="#/t/${enc(id)}/c/${enc(ch.id)}"${now ? ' aria-current="step"' : ""}>
       <span class="ll-path-mark ll-stage-${st}" title="${STAGE_LABEL[st]}" aria-label="${STAGE_LABEL[st]}">${STAGE_ICON[st]}</span>
-      <span class="ll-path-text">${esc(ch.title)}</span><span class="ll-path-after">${after}${dateHtml}</span></a></li>`;
+      <span class="ll-path-text">${esc(ch.title)}</span><span class="ll-path-after">${after}${dateHtml}${noticeHtml}</span></a></li>`;
   }).join("")}</ol>`;
   // 지금 장이 든 부만 펼친다(다 읽었으면 모두 펼침). 부 이름이 없으면 접지 않는다
   const html = groups.map((g) => {
@@ -455,7 +470,7 @@ async function viewChapter(root, id, chapterId) {
         <input type="checkbox" data-read="${esc(it.id)}" ${state.read[it.id] ? "checked" : ""} aria-label="${esc(it.title)} 읽음"><i class="icon icon-checkbox"></i>
       </label>
       <a class="item-link item-content ll-toc-link" href="#/t/${enc(id)}/i/${enc(it.id)}"><div class="item-inner">
-        <div class="item-title">${esc(it.title)}</div></div></a></li>`).join("");
+        <div class="item-title">${esc(it.title)}${itemNotice(state, it) ? `<div class="item-footer">${noticePill(itemNotice(state, it))}</div>` : ""}</div></div></a></li>`).join("");
   const toTest = fresh.length + due.length;
   // 테스트할 문제가 있으면 테스트가 채움 버튼, 없으면 상태 문장 + 다음 장이 채움 버튼(화면마다 채움 버튼 하나)
   const testState = !cardCount ? "이 장은 문제가 없어요."
@@ -508,6 +523,21 @@ async function viewItem(root, id, itemId) {
   const lastInChapter = !next || next.chapterId !== ch.id;
   const after = lastInChapter ? `#/t/${enc(id)}/done/${enc(ch.id)}` : `#/t/${enc(id)}/i/${enc(next.id)}`;
   const chRead = readCount(state, ch);
+  // 업데이트 표시: 읽은 뒤(또는 질문 뒤) 내용이 바뀌었으면 제목 위 알약 + 한 줄, 아래 바는 「다시 읽음 표시」
+  const notice = itemNotice(state, it);
+  const noticeHtml = notice ? `<p class="ll-notice-line">${noticePill(notice)} <span class="ll-muted">${shortDay(it.updated)}에 바뀌었어요 — ${notice === "answered" ? "질문 뒤에 고친 내용을 보고" : "다시 읽고"} 「다시 읽음 표시」를 누르면 사라져요.</span></p>` : "";
+  const questions = itemQuestions(state, it.id);
+  // 맨 아래 「모르는 것」: 이 항목 질문 목록(시각) + 여러 줄 입력·추가. 지우기는 tombstone(engine.js deleteQuestion)
+  const askHtml = `<section class="block ll-ask" aria-labelledby="ask-title">
+      <h2 class="ll-ask-title" id="ask-title">모르는 것</h2>
+      ${questions.length ? `<ul class="ll-ask-list">${questions.map((q) => `<li class="ll-ask-row">
+        <p class="ll-ask-text">${esc(q.text)}</p>
+        <div class="ll-ask-meta"><time datetime="${new Date(q.t).toISOString()}">${fmtTime(q.t)}</time>
+          <button type="button" class="ll-ask-del" data-del="${q.t}" aria-label="${fmtTime(q.t)} 질문 지우기">지우기</button></div></li>`).join("")}</ul>`
+        : `<p class="ll-muted">읽다가 모르는 것을 적어 두면 「결과 보내기」 요약에 실려 노트 보완에 쓰여요.</p>`}
+      <textarea id="ask-input" class="ll-answer-input" rows="3" aria-label="모르는 것 적기" placeholder="이 항목에서 모르는 것·더 알고 싶은 것"></textarea>
+      <button type="button" class="button button-tonal button-large" id="btn-ask" disabled>질문 추가</button>
+    </section>`;
   // 위: 장 안 위치 「n / m」 + 장 읽음 막대 + 「항목 목록 ▾」(줄 전체가 버튼, 스크롤해도 머리줄 아래 고정)
   // 아래: 탭 바로 위 고정 바 「‹ 이전 · 읽음 표시 · 다음 ›」 — 채움은 「다음」 하나
   root.innerHTML = `<button type="button" class="ll-itempos" id="btn-item-list" aria-haspopup="dialog" aria-label="${esc(ch.id)} 항목 ${ch.items.length}개 중 ${pos}번째, ${chRead}개 읽음 — 항목 목록 열기">
@@ -517,14 +547,18 @@ async function viewItem(root, id, itemId) {
     </button>
     <div class="block ll-article">
       <p class="ll-muted"><a href="#/t/${enc(id)}/c/${enc(ch.id)}">${esc(ch.title)}</a></p>
+      ${noticeHtml}
       <h1>${esc(it.title)}</h1>
       ${html}
     </div>
+    ${askHtml}
     <nav class="ll-itembar" aria-label="항목 이동">
       ${prev
         ? `<a class="button button-large ll-itembar-btn" href="#/t/${enc(id)}/i/${enc(prev.id)}">‹ 이전</a>`
         : `<span class="button button-large ll-itembar-btn disabled" aria-disabled="true">‹ 이전</span>`}
-      ${read
+      ${read && notice
+        ? `<button type="button" class="button button-large button-outline ll-itembar-btn" id="btn-read">다시 읽음 표시</button>`
+        : read
         ? `<button type="button" class="button button-large ll-itembar-btn ll-read-on" id="btn-read"><span>✓ 읽음</span><small>누르면 취소</small></button>`
         : `<button type="button" class="button button-large button-outline ll-itembar-btn" id="btn-read">읽음 표시</button>`}
       <a class="button button-large button-fill ll-itembar-btn" href="${after}">${lastInChapter ? "장 마치기 ›" : "다음 ›"}</a>
@@ -532,10 +566,27 @@ async function viewItem(root, id, itemId) {
   $("#page").classList.add("ll-has-itembar");
   $("#btn-item-list").onclick = () => openItemSheet(id, ch, it.id);
   $("#btn-read").onclick = () => {
+    // 업데이트를 다시 읽음: 읽음 시각만 지금으로 바꾸고 이 화면에 남는다(표시가 사라진 것을 보이게)
+    if (read && notice) { toggleRead(id, it.id, true); route(true); return; }
     if (read) { toggleRead(id, it.id, false); route(); return; }
     toggleRead(id, it.id, true);
     location.hash = after;
   };
+  const input = $("#ask-input");
+  input.oninput = () => { $("#btn-ask").disabled = !input.value.trim(); };
+  $("#btn-ask").onclick = () => {
+    const s = loadState(id);
+    if (!addQuestion(s, it.id, input.value)) return;
+    saveState(id, s);
+    route(true);
+  };
+  root.querySelectorAll("[data-del]").forEach((b) => {
+    b.onclick = () => {
+      if (!confirm("이 질문을 지웁니다.")) return;
+      const s = loadState(id);
+      if (deleteQuestion(s, it.id, Number(b.dataset.del))) { saveState(id, s); route(true); }
+    };
+  });
   $("#content").scrollTop = 0;
 }
 
@@ -602,6 +653,11 @@ async function viewReview(root, id) {
   const dueList = byChapter.length ? `<div class="block-title">오늘 재점검 내역</div>
     <div class="list list-strong inset list-dividers ll-due-list"><ul>${byChapter.map(({ r, ch, n }) => `<li><a class="item-link item-content" href="#/t/${enc(r.t.id)}/c/${enc(ch.id)}"><div class="item-inner">
       <div class="item-title">${esc(chapterLabel(ch))}${id ? "" : `<div class="item-footer">${esc(r.t.title)}</div>`}</div><div class="item-after">${n}</div></div></a></li>`).join("")}</ul></div>` : "";
+  // 다시 볼 항목: 읽은 뒤·질문 뒤 내용이 바뀐 항목(누르면 그 항목, 다시 읽음 표시하면 빠짐)
+  const revisit = sel.flatMap((r) => noticeItems(r.topic, r.state).map((it) => ({ r, it })));
+  const revisitList = revisit.length ? `<div class="block-title">다시 볼 항목 ${revisit.length}</div>
+    <div class="list list-strong inset list-dividers ll-revisit"><ul>${revisit.map(({ r, it }) => `<li><a class="item-link item-content" href="#/t/${enc(r.t.id)}/i/${enc(it.id)}"><div class="item-inner">
+      <div class="item-title">${esc(it.title)}<div class="item-footer">${esc(it.chapterId)}${id ? "" : ` · ${esc(r.t.title)}`}</div></div><div class="item-after">${noticePill(it.notice)}</div></div></a></li>`).join("")}</ul></div>` : "";
   // 채움 버튼은 하나만 — 재점검이 있으면 재점검, 없으면 새 문제
   const primary = dueN ? "due" : freshN ? "fresh" : null;
   const btn = (key, label, n) => `<button class="button ${primary === key ? "button-fill button-large" : "button-tonal button-large"}" id="btn-${key}" ${n ? "" : "disabled"}>${label} (${n})</button>`;
@@ -621,6 +677,7 @@ async function viewReview(root, id) {
       ${nextDue ? `<p class="ll-muted">다음 재점검 ${fmtDate(nextDue)}</p>` : ""}` : `<a class="button button-fill button-large" href="${id ? `#/t/${enc(id)}` : "#/topics"}">${id ? "목차에서 이어 읽기" : "주제에서 이어 읽기"}</a>`}
     </div>
     ${dueList}
+    ${revisitList}
     <div class="block"><p class="ll-muted">재점검은 테스트를 통과한 뒤 ${intervalText()}일 뒤에 하고, 틀리면 1일 뒤로 돌아가요.</p></div>`;
   $(".ll-chip-on")?.scrollIntoView({ block: "nearest", inline: "center" });
   const back = id ? `#/t/${enc(id)}/review` : "#/review";
